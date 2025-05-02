@@ -533,7 +533,7 @@ setup_netmaker() {
   
   # 尝试三种不同的方法来获取令牌
   # 方法1: 通过API获取
-  NETMAKER_TOKEN=$(curl -s -X GET -H "Authorization: Bearer $MASTER_KEY" http://localhost:8089/api/networks/vpn/keys/token 2>/dev/null | grep -o '"token":"[^"]*"' | cut -d '"' -f 4 || echo "")
+  NETMAKER_TOKEN=$(curl -s -X GET -H "Authorization: Bearer $MASTER_KEY" http://localhost:8090/api/networks/vpn/keys/token 2>/dev/null | grep -o '"token":"[^"]*"' | cut -d '"' -f 4 || echo "")
   
   # 方法2: 直接从容器中获取
   if [ -z "$NETMAKER_TOKEN" ]; then
@@ -556,9 +556,18 @@ setup_netmaker() {
   # 显示Netmaker令牌信息
   if [ "$NETMAKER_TOKEN" != "请登录网络控制面板获取令牌" ]; then
     echo -e "${GREEN}Netmaker接入令牌: $NETMAKER_TOKEN${NC}"
-    # 更新凭证文件 - 更安全的替换方式
-    TOKEN_ESCAPED=$(printf '%s\n' "$NETMAKER_TOKEN" | sed -e 's/[\/&]/\\&/g')
-    sed -i "s/your_netmaker_join_token/$TOKEN_ESCAPED/g" "$SCRIPT_DIR/credentials.env"
+    # 更新凭证文件 - 使用写入文件的方式，避免sed命令的转义问题
+    if [ -f "$SCRIPT_DIR/credentials.env" ]; then
+      # 先创建一个临时文件
+      cat "$SCRIPT_DIR/credentials.env" | grep -v "NETMAKER_JOIN_TOKEN" > "$SCRIPT_DIR/credentials.env.tmp"
+      # 然后追加新的令牌
+      echo "NETMAKER_JOIN_TOKEN=\"$NETMAKER_TOKEN\"" >> "$SCRIPT_DIR/credentials.env.tmp"
+      # 替换原文件
+      mv "$SCRIPT_DIR/credentials.env.tmp" "$SCRIPT_DIR/credentials.env"
+      echo -e "${GREEN}凭证文件更新成功${NC}"
+    else
+      echo -e "${YELLOW}警告: 凭证文件不存在，请手动创建并添加NETMAKER_JOIN_TOKEN=${NETMAKER_TOKEN}${NC}"
+    fi
   else
     echo -e "${YELLOW}无法自动获取令牌，请登录控制面板手动生成${NC}"
     # 将占位符保留在凭证文件中，等待手动更新
