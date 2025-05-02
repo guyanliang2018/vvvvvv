@@ -93,38 +93,19 @@ SERVER_IP=$(hostname -I | awk '{print $1}')
 dig +short $DOMAIN > /dev/null 2>&1
 check_status $? "主域名解析正常: $DOMAIN" "主域名解析失败: $DOMAIN"
 
-# 测试面板子域名解析
-PANEL_DOMAIN="panel.$DOMAIN"
-IP_PANEL=$(dig +short $PANEL_DOMAIN)
-if [ -n "$IP_PANEL" ]; then
-    if [ "$IP_PANEL" = "$SERVER_IP" ]; then
-        echo -e "[${GREEN}✓${NC}] 面板域名解析正确: $PANEL_DOMAIN -> $IP_PANEL"
-    else
-        echo -e "[${YELLOW}!${NC}] 面板域名解析到错误IP: $PANEL_DOMAIN -> $IP_PANEL (服务器IP: $SERVER_IP)"
-    fi
-else
-    echo -e "[${RED}✗${NC}] 面板域名解析失败: $PANEL_DOMAIN"
-fi
-
-# 测试Netmaker子域名解析
-NETMAKER_DOMAIN="netmaker.$DOMAIN"
-IP_NETMAKER=$(dig +short $NETMAKER_DOMAIN)
-if [ -n "$IP_NETMAKER" ]; then
-    if [ "$IP_NETMAKER" = "$SERVER_IP" ]; then
-        echo -e "[${GREEN}✓${NC}] Netmaker域名解析正确: $NETMAKER_DOMAIN -> $IP_NETMAKER"
-    else
-        echo -e "[${YELLOW}!${NC}] Netmaker域名解析到错误IP: $NETMAKER_DOMAIN -> $IP_NETMAKER (服务器IP: $SERVER_IP)"
-    fi
-else
-    echo -e "[${RED}✗${NC}] Netmaker域名解析失败: $NETMAKER_DOMAIN"
-fi
+# 现在我们只使用一个域名，不再需要检查子域名
+# 提示使用新的URL结构
+echo -e "[${BLUE}i${NC}] 新配置使用单一域名 $DOMAIN 和虚拟目录"
+echo -e "[${BLUE}i${NC}] Marzban面板: https://$DOMAIN/panel"
+echo -e "[${BLUE}i${NC}] 监控面板: https://$DOMAIN/monitor"
+echo -e "[${BLUE}i${NC}] Netmaker控制台: https://$DOMAIN/netmaker"
 
 # 检查端口监听状态
 print_section "端口监听检查"
 echo -e "${CYAN}关键端口监听状态:${NC}"
 
-# 定义需要检查的端口列表
-PORTS_TCP=(4443 8080 5443 8095 8884)
+# 主要的TCP端口 - 已更新为使用标准端口
+PORTS_TCP=(443 5443 8095 8884)
 PORTS_UDP=(3485 51821)
 
 # 获取端口对应的服务名称的辅助函数
@@ -133,11 +114,8 @@ get_service_by_port() {
     local SERVICE=""
     
     case $PORT in
-        4443)
-            SERVICE="Marzban HTTPS"
-            ;;
-        8080)
-            SERVICE="Marzban HTTP"
+        443)
+            SERVICE="HTTPS"
             ;;
         5443)
             SERVICE="Netmaker HTTPS"
@@ -334,19 +312,19 @@ check_ssl_cert() {
     fi
 }
 
-# 检查Marzban面板证书
-check_ssl_cert "panel.$DOMAIN" "4443"
+# 检查主域名证书
+check_ssl_cert "$DOMAIN" "443"
 
 # 检查Netmaker控制台证书
-check_ssl_cert "netmaker.$DOMAIN" "5443"
+check_ssl_cert "$DOMAIN" "5443"
 
 # 外部访问测试
 print_section "外部连接测试"
 echo -e "${CYAN}从服务器测试面板连接:${NC}"
 
 # 测试Marzban面板连接
-echo -e "\n${CYAN}测试Marzban面板 (https://panel.$DOMAIN:4443):${NC}"
-PANEL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -k https://panel.$DOMAIN:4443 2>/dev/null || echo "000")
+echo -e "\n${CYAN}测试Marzban面板 (https://$DOMAIN/panel):${NC}"
+PANEL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -k https://$DOMAIN/panel 2>/dev/null || echo "000")
 
 if [ "$PANEL_STATUS" = "000" ]; then
     echo -e "[${RED}✗${NC}] 无法连接到面板 (无响应)"
@@ -360,8 +338,8 @@ else
 fi
 
 # 测试Netmaker控制台连接
-echo -e "\n${CYAN}测试Netmaker控制台 (https://netmaker.$DOMAIN:5443):${NC}"
-NETMAKER_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -k https://netmaker.$DOMAIN:5443 2>/dev/null || echo "000")
+echo -e "\n${CYAN}测试Netmaker控制台 (https://$DOMAIN/netmaker):${NC}"
+NETMAKER_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -k https://$DOMAIN/netmaker 2>/dev/null || echo "000")
 
 if [ "$NETMAKER_STATUS" = "000" ]; then
     echo -e "[${RED}✗${NC}] 无法连接到Netmaker控制台 (无响应)"
@@ -426,14 +404,16 @@ echo -e "${CYAN}根据检测结果，以下是系统问题的修复建议:${NC}"
 # 存储问题和建议
 ISSUES=0
 
-# DNS问题检查
-if [ -z "$IP_PANEL" ] || [ -z "$IP_NETMAKER" ]; then
-    ISSUES=$((ISSUES+1))
-    echo -e "\n${RED}[$ISSUES] DNS解析问题:${NC}"
+# DNS解析问题
+echo -e "${BLUE}[1] DNS解析问题:${NC}"
+if [ "$(dig +short $DOMAIN)" != "$SERVER_IP" ]; then
     echo -e "  • DNS解析不正确，请确保在DNS提供商处添加以下A记录:"
-    echo -e "    - panel.$DOMAIN -> $SERVER_IP"
-    echo -e "    - netmaker.$DOMAIN -> $SERVER_IP"
+    echo -e "    - $DOMAIN -> $SERVER_IP"
     echo -e "  • 修复命令: 无法自动修复，请手动修改DNS记录"
+    echo -e "  • 注意: 新配置使用单一域名和虚拟路径，不再需要子域名"
+    DNS_ISSUES=1
+else
+    echo -e "  ${GREEN}DNS解析正常${NC}"
 fi
 
 # 防火墙端口问题
