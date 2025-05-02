@@ -538,9 +538,75 @@ EOF
   # 创建必要的目录
   mkdir -p "$SCRIPT_DIR/marzban/data" "$SCRIPT_DIR/marzban/certs" "$SCRIPT_DIR/marzban/mysql" "$SCRIPT_DIR/marzban/caddy-data" "$SCRIPT_DIR/marzban/caddy-config" "$SCRIPT_DIR/marzban/prometheus/rules" "$SCRIPT_DIR/marzban/prometheus-data" "$SCRIPT_DIR/marzban/grafana" "$SCRIPT_DIR/marzban/alertmanager"
   
-  # 复制预设的配置文件
-  cp "$SCRIPT_DIR/marzban/data/xray_config.json" "$SCRIPT_DIR/marzban/data/" 2>/dev/null || true
-  cp "$SCRIPT_DIR/marzban/data/inbounds_template.json" "$SCRIPT_DIR/marzban/data/" 2>/dev/null || true
+  # 创建默认的xray_config.json文件（最重要的修复）
+  if [ ! -f "$SCRIPT_DIR/marzban/data/xray_config.json" ]; then
+    echo -e "${YELLOW}创建 Xray 配置文件...${NC}"
+    cat > "$SCRIPT_DIR/marzban/data/xray_config.json" << 'EOFXRAY'
+{
+    "log": {
+        "loglevel": "warning"
+    },
+    "api": {
+        "tag": "api",
+        "services": ["HandlerService", "StatsService"]
+    },
+    "inbounds": [],
+    "outbounds": [
+        {
+            "tag": "direct",
+            "protocol": "freedom",
+            "settings": {}
+        },
+        {
+            "tag": "blocked",
+            "protocol": "blackhole",
+            "settings": {}
+        }
+    ],
+    "routing": {
+        "rules": [
+            {
+                "type": "field",
+                "inboundTag": ["api"],
+                "outboundTag": "api"
+            }
+        ],
+        "domainStrategy": "AsIs"
+    },
+    "policy": {
+        "levels": {
+            "0": {
+                "statsUserUplink": true,
+                "statsUserDownlink": true
+            }
+        },
+        "system": {
+            "statsInboundUplink": true,
+            "statsInboundDownlink": true,
+            "statsOutboundUplink": true,
+            "statsOutboundDownlink": true
+        }
+    }
+}
+EOFXRAY
+    echo -e "${GREEN}Xray配置文件创建成功${NC}"
+  fi
+
+  # 创建默认的inbounds_template.json文件
+  if [ ! -f "$SCRIPT_DIR/marzban/data/inbounds_template.json" ]; then
+    echo -e "${YELLOW}创建 inbounds 模板文件...${NC}"
+    cat > "$SCRIPT_DIR/marzban/data/inbounds_template.json" << 'EOFINB'
+{
+    "tag": "{{protocol}}_{{tag}}",
+    "listen": "0.0.0.0",
+    "port": {{port}},
+    "protocol": "{{protocol}}",
+    "settings": {},
+    "streamSettings": {}
+}
+EOFINB
+    echo -e "${GREEN}inbounds模板文件创建成功${NC}"
+  fi
   
   # 创建Prometheus配置文件
   if [ ! -f "$SCRIPT_DIR/marzban/prometheus/prometheus.yml" ]; then
@@ -608,6 +674,24 @@ EOF
     chown -R 1000:1000 "$SCRIPT_DIR/marzban/alertmanager" || true
   fi
   
+  # 设置目录权限（解决Grafana和Prometheus容器的问题）
+  echo -e "${YELLOW}设置正确的目录权限...${NC}"
+  if command -v sudo &> /dev/null; then
+    # 如果有sudo权限，我们使用sudo
+    sudo chown -R 1000:1000 "$SCRIPT_DIR/marzban/grafana" || true
+    sudo chown -R 1000:1000 "$SCRIPT_DIR/marzban/prometheus" || true
+    sudo chown -R 1000:1000 "$SCRIPT_DIR/marzban/prometheus-data" || true
+    sudo chown -R 1000:1000 "$SCRIPT_DIR/marzban/alertmanager" || true
+    sudo chmod -R 755 "$SCRIPT_DIR/marzban/grafana" "$SCRIPT_DIR/marzban/prometheus" "$SCRIPT_DIR/marzban/prometheus-data" "$SCRIPT_DIR/marzban/alertmanager" || true
+  else
+    # 如果没有sudo，尝试直接设置
+    chown -R 1000:1000 "$SCRIPT_DIR/marzban/grafana" 2>/dev/null || echo -e "${YELLOW}注意: 无法设置 grafana 目录权限${NC}"
+    chown -R 1000:1000 "$SCRIPT_DIR/marzban/prometheus" 2>/dev/null || echo -e "${YELLOW}注意: 无法设置 prometheus 目录权限${NC}"
+    chown -R 1000:1000 "$SCRIPT_DIR/marzban/prometheus-data" 2>/dev/null || echo -e "${YELLOW}注意: 无法设置 prometheus-data 目录权限${NC}"
+    chown -R 1000:1000 "$SCRIPT_DIR/marzban/alertmanager" 2>/dev/null || echo -e "${YELLOW}注意: 无法设置 alertmanager 目录权限${NC}"
+    chmod -R 755 "$SCRIPT_DIR/marzban/grafana" "$SCRIPT_DIR/marzban/prometheus" "$SCRIPT_DIR/marzban/prometheus-data" "$SCRIPT_DIR/marzban/alertmanager" 2>/dev/null || true
+  fi
+
   # 启动Marzban面板
   if [ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "panel" ]; then
     echo -e "${BLUE}启动Marzban面板...${NC}"
