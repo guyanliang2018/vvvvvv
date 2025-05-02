@@ -9,14 +9,14 @@ services:
       SERVER_HOST: "netmaker.your-domain.com"
       COREDNS_ADDR: "127.0.0.1"
       CLIENT_MODE: "on"
-      API_PORT: "8091"  # 修改为8091端口，避免与其他服务冲突
+      API_PORT: "8095"  # 修改为8095端口，避免所有端口冲突
       GRPC_PORT: "50051"
       SERVER_API_CONN_STRING: "api.netmaker.your-domain.com:5443"  # 修改为5443端口，与Caddy一致
       DISABLE_REMOTE_UDP_CHECKS: "true"  # 禁用远程UDP检查以减少端口使用
-      SERVER_HTTP_HOST: "localhost:8091"  # 指定正确的HTTP主机
+      SERVER_HTTP_HOST: "localhost:8095"  # 指定正确的HTTP主机
       GRPC_SSL: "on"
       DNS_MODE: "on"
-      MASTER_KEY: "your-secure-master-key"
+      MASTER_KEY: "${MASTER_KEY:-netmaker-master-key-2025}"  # 使用环境变量或默认值
       DATABASE: "sqlite"
       VERBOSITY: "2"
       DISPLAY_KEYS: "on"
@@ -37,8 +37,8 @@ services:
       - "51821:51821/udp"
       - "53:53/udp"
       - "8884:8884/tcp"  # 修改MQTT端口映射
-      - "8091:8091/tcp"  # 增加API端口映射
-      - "3481:3478/udp"  # 修改STUN端口映射，避免与其他服务冲突
+      - "8095:8095/tcp"  # 增加API端口映射
+      - "3485:3478/udp"  # 修改STUN端口映射，避免与其他服务冲突
     cap_add:
       - NET_ADMIN
 
