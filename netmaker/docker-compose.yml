@@ -9,9 +9,9 @@ services:
       SERVER_HOST: "netmaker.your-domain.com"
       COREDNS_ADDR: "127.0.0.1"
       CLIENT_MODE: "on"
-      API_PORT: "8081"
+      API_PORT: "8089"  # 修改为8089端口，避免与其他服务冲突
       GRPC_PORT: "50051"
-      SERVER_API_CONN_STRING: "api.netmaker.your-domain.com:443"
+      SERVER_API_CONN_STRING: "api.netmaker.your-domain.com:5443"  # 修改为5443端口，与Caddy一致
       GRPC_SSL: "on"
       DNS_MODE: "on"
       MASTER_KEY: "your-secure-master-key"
@@ -35,6 +35,8 @@ services:
       - "51821:51821/udp"
       - "53:53/udp"
       - "8883:8883/tcp"
+      - "8089:8089/tcp"  # 增加API端口映射
+      - "3479:3478/udp"  # 修改STUN端口映射，避免与其他服务冲突
     cap_add:
       - NET_ADMIN
 

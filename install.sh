@@ -544,8 +544,9 @@ setup_netmaker() {
     # 显示Netmaker令牌信息
     if [ "$NETMAKER_TOKEN" != "请登录网络控制面板获取令牌" ]; then
       echo -e "${GREEN}Netmaker接入令牌: $NETMAKER_TOKEN${NC}"
-      # 更新凭证文件
-      sed -i "s|your_netmaker_join_token|$NETMAKER_TOKEN|g" "$SCRIPT_DIR/credentials.env"
+      # 更新凭证文件 - 更安全的替换方式
+      TOKEN_ESCAPED=$(printf '%s\n' "$NETMAKER_TOKEN" | sed -e 's/[\/&]/\\&/g')
+      sed -i "s/your_netmaker_join_token/$TOKEN_ESCAPED/g" "$SCRIPT_DIR/credentials.env"
     else
       echo -e "${YELLOW}无法自动获取令牌，请登录控制面板手动生成${NC}"
       # 将占位符保留在凭证文件中，等待手动更新
