@@ -7,8 +7,8 @@ services:
     env_file:
       - ./env
     ports:
-      - "4443:443"  # 修改为4443端口，避免与系统其他服务冲突
-      - "8080:80"  # 修改为8080端口，避免与系统其他服务冲突
+      - "443:443"  # 使用标准HTTPS端口
+      - "80:80"    # 使用标准HTTP端口
     volumes:
       - ./data:/var/lib/marzban
       - ./certs:/var/lib/marzban/certs
