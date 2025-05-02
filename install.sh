@@ -322,75 +322,70 @@ setup_credentials() {
     # 创建备份
     cp "$SCRIPT_DIR/credentials.env" "$SCRIPT_DIR/credentials.env.bak"
     
-    # 修复文件 - 删除多行值的问题（特别是NETMAKER_JOIN_TOKEN）
+    # 修复文件 - 尤其处理NETMAKER_JOIN_TOKEN问题
     echo -e "${YELLOW}修复credentials.env文件...${NC}"
     
-    # 创建一个临时文件来存储有效的行
-    TEMP_CRED=$(mktemp)
+    # 回到最基本的方法 - 使用grep提取并后续处理
+    # 这种方法避免了复杂的shell正则表达式语法问题
     
-    # 逐行读取文件并且过滤掉无效的内容
-    while IFS= read -r line || [ -n "$line" ]; do
-      # 保留注释和空行
-      if [[ "$line" =~ ^[[:space:]]*# || -z "$line" ]]; then
-        echo "$line" >> "$TEMP_CRED"
-      # 检查是否是有效的环境变量赋值行（变量名=值格式）
-      elif [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
-        # 提取变量名和值
-        var_name="${line%%=*}"
-        var_value="${line#*=}"
-        
-        # 特别处理NETMAKER_JOIN_TOKEN变量
-        if [[ "$var_name" == "NETMAKER_JOIN_TOKEN" ]]; then
-          echo "${var_name}=your_netmaker_join_token_value" >> "$TEMP_CRED"
-          echo -e "${YELLOW}警告: NETMAKER_JOIN_TOKEN 变量已重置为默认值${NC}" >&2
-          continue
-        fi
-        
-        # 保留这些重要变量的原始值（如果它们不是_value结尾的默认值）
-        if [[ "$var_name" == "MARZBAN_API_TOKEN" || "$var_name" == "MARZBAN_ADMIN_PASSWORD" || \
-              "$var_name" == "API_KEY" || "$var_name" == "MYSQL_PASSWORD" ]]; then
-          # 检查如果变量值看起来是有效的（不是默认值格式）
-          if [[ ! "$var_value" =~ your_.*_value$ && ! "$var_value" =~ ^\".* ]]; then
-            # 维持原始值
-            echo "$line" >> "$TEMP_CRED"
-            continue
-          fi
-        fi
-        
-        # 保留用户实际设置的值（非默认值模式）
-        if [[ ! "$var_value" =~ your_.*_value$ && ! "$var_value" =~ ^"your_ && ${#var_value} -lt 50 ]]; then
-          # 是一个自定义值，保留它
-          # 检查值是否有未闭合的引号
-          if [[ "$var_value" =~ ^\".* && ! "$var_value" =~ .*\"$ ]]; then
-            # 引号未闭合，替换为默认值
-            echo "${var_name}=${var_value}\"" >> "$TEMP_CRED" # 添加缺失的引号
-            echo -e "${YELLOW}警告: 变量 $var_name 包含未闭合的引号，已添加结束引号${NC}" >&2
-          else
-            echo "$line" >> "$TEMP_CRED"
-          fi
-          continue
-        fi
-        
-        # 检查值是否有未闭合的引号
-        if [[ "$var_value" =~ ^\".* && ! "$var_value" =~ .*\"$ ]]; then
-          # 引号未闭合，替换为默认值
-          echo "${var_name}=your_${var_name,,}_value" >> "$TEMP_CRED"
-          echo -e "${YELLOW}警告: 变量 $var_name 包含未闭合的引号，已重置为默认值${NC}" >&2
-          continue
-        fi
-        
-        # 如果值很长或包含特殊字符，可能是损坏的 - 替换为安全默认值
-        if [[ ${#var_value} -gt 100 || "$var_value" =~ [\n\r] ]]; then
-          echo "${var_name}=your_${var_name,,}_value" >> "$TEMP_CRED"
-          echo -e "${YELLOW}警告: 变量 $var_name 包含异常值，已重置为默认值${NC}" >&2
-        else
-          echo "$line" >> "$TEMP_CRED"
-        fi
+    # 创建一个全新的文件
+    cat > "$SCRIPT_DIR/credentials.env.new" << 'EOF'
+# VPN自动化系统凭证文件
+# 重要: 此文件已经被修复，原文件备份为credentials.env.bak
+
+# 云服务商API密钥
+VULTR_API_KEY=your_vultr_api_key
+DO_TOKEN=your_digitalocean_token
+LINODE_TOKEN=your_linode_token
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+
+# Netmaker配置
+NETMAKER_SERVER=netmaker.vpn.mytelcc.xyz
+NETMAKER_API_TOKEN=your_netmaker_api_token
+NETMAKER_JOIN_TOKEN=your_netmaker_join_token
+
+# Marzban配置
+MARZBAN_SERVER=panel.vpn.mytelcc.xyz
+MARZBAN_API_TOKEN=api-31e8744a797efa4799070e6758e8c358
+MARZBAN_ADMIN_USERNAME=admin
+MARZBAN_ADMIN_PASSWORD=2vAENquWW5WoEx9+
+
+# 证书配置
+ACME_EMAIL=admin@qq.com
+
+# DNS API认证 (用于DNS-01验证)
+# Cloudflare
+CF_Key=your_cloudflare_key
+CF_Email=your_cloudflare_email
+
+# 阿里云
+Ali_Key=your_aliyun_key
+Ali_Secret=your_aliyun_secret
+
+# DNSPod
+DP_Id=your_dnspod_id
+DP_Key=your_dnspod_key
+
+# 监控和告警
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_CHAT_ID=your_telegram_chat_id
+EOF
+    
+    # 现在尝试从现有文件中提取实际的值
+    # 使用grep和sed提取变量
+    for var in MARZBAN_API_TOKEN MARZBAN_ADMIN_PASSWORD ACME_EMAIL BASE_DOMAIN; do
+      # 变量存在且不是默认值
+      val=$(grep "^$var=" "$SCRIPT_DIR/credentials.env" | sed "s/^$var=//" | grep -v "your_${var,,}")
+      if [ -n "$val" ]; then
+        # 将值替换到新文件中
+        sed -i "s|^$var=.*|$var=$val|" "$SCRIPT_DIR/credentials.env.new"
+        echo -e "${GREEN}保留原始值: $var${NC}"
       fi
-    done < "$SCRIPT_DIR/credentials.env"
+    done
     
-    # 替换原始文件
-    mv "$TEMP_CRED" "$SCRIPT_DIR/credentials.env"
+    # 覆盖原始文件
+    mv "$SCRIPT_DIR/credentials.env.new" "$SCRIPT_DIR/credentials.env"
     chmod 600 "$SCRIPT_DIR/credentials.env"
     echo -e "${GREEN}credentials.env文件已修复，原文件备份为credentials.env.bak${NC}"
   fi
