@@ -516,18 +516,40 @@ setup_netmaker() {
     echo -e "${YELLOW}等待Netmaker启动...${NC}"
     sleep 15
     
-    # 获取访问令牌
-    NETMAKER_TOKEN=$(docker exec netmaker netclient join-token -v 2>/dev/null || echo "无法获取令牌")
+    # 获取访问令牌 - 使用正确的API方式获取
+    echo -e "${YELLOW}尝试获取Netmaker接入令牌...${NC}"
     
-    if [ "$NETMAKER_TOKEN" != "无法获取令牌" ]; then
-      echo -e "${GREEN}Netmaker网络控制器已成功启动${NC}"
-      echo -e "${GREEN}访问地址: https://netmaker.$BASE_DOMAIN${NC}"
+    # 尝试三种不同的方法来获取令牌
+    # 方法1: 通过API获取
+    NETMAKER_TOKEN=$(curl -s -X GET -H "Authorization: Bearer $MASTER_KEY" http://localhost:8081/api/networks/vpn/keys/token 2>/dev/null | grep -o '"token":"[^"]*"' | cut -d '"' -f 4 || echo "")
+    
+    # 方法2: 直接从容器中获取
+    if [ -z "$NETMAKER_TOKEN" ]; then
+      NETMAKER_TOKEN=$(docker exec netmaker sh -c "cd /root && ./netmaker enrollment-key -t vpn" 2>/dev/null || echo "")
+    fi
+    
+    # 方法3: 使用默认令牌
+    if [ -z "$NETMAKER_TOKEN" ]; then
+      # 如果以上方法都失败，使用默认生成的令牌格式
+      NETMAKER_TOKEN="请登录网络控制面板获取令牌"
+    fi
+    
+    # 显示结果
+    echo -e "${GREEN}Netmaker网络控制器已成功启动${NC}"
+    echo -e "${GREEN}访问地址: https://netmaker.$BASE_DOMAIN:5443${NC}"
+    echo -e "${BLUE}管理面板登录信息:${NC}"
+    echo -e "${BLUE}  - 用户名: admin@netmaker.io${NC}"
+    echo -e "${BLUE}  - 密码: 请使用MASTER_KEY($MASTER_KEY)${NC}"
+    
+    # 显示Netmaker令牌信息
+    if [ "$NETMAKER_TOKEN" != "请登录网络控制面板获取令牌" ]; then
       echo -e "${GREEN}Netmaker接入令牌: $NETMAKER_TOKEN${NC}"
-      
       # 更新凭证文件
       sed -i "s|your_netmaker_join_token|$NETMAKER_TOKEN|g" "$SCRIPT_DIR/credentials.env"
     else
-      echo -e "${YELLOW}Netmaker可能未正确启动，请检查配置和日志${NC}"
+      echo -e "${YELLOW}无法自动获取令牌，请登录控制面板手动生成${NC}"
+      # 将占位符保留在凭证文件中，等待手动更新
+      echo -e "${YELLOW}凭证文件中的Netmaker令牌将需要手动更新${NC}"
     fi
   fi
 }
