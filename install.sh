@@ -495,11 +495,28 @@ setup_netmaker() {
   
   cd "$SCRIPT_DIR/netmaker"
 
+  # 端口冲突检测和处理函数
+  check_port() {
+    local port=$1
+    local result=$(lsof -i:$port -t 2>/dev/null)
+    if [ -n "$result" ]; then
+      echo -e "${YELLOW}端口 $port 已被占用，尝试关闭相关进程...${NC}"
+      kill -9 $result 2>/dev/null || true
+      return 1
+    fi
+    return 0
+  }
+  
+  # 检查并清理Netmaker相关端口
+  echo -e "${YELLOW}检查关键端口是否可用...${NC}"
+  for port in 8091 3481 8883 51821 53; do
+    check_port $port
+  done
+  
   # 强制清理现有Netmaker容器和相关资源
   echo -e "${YELLOW}清理已存在的Netmaker容器和相关资源...${NC}"
   docker rm -f netmaker netmaker-caddy 2>/dev/null || true
-  docker system prune -f 2>/dev/null || true
-  docker volume prune -f 2>/dev/null || true
+  docker system prune -af --volumes 2>/dev/null || true
   
   # 完全移除数据目录重新建立，解决数据损坏问题
   rm -rf "$SCRIPT_DIR/netmaker/data" "$SCRIPT_DIR/netmaker/config" "$SCRIPT_DIR/netmaker/certs"
@@ -533,7 +550,7 @@ setup_netmaker() {
   
   # 尝试三种不同的方法来获取令牌
   # 方法1: 通过API获取
-  NETMAKER_TOKEN=$(curl -s -X GET -H "Authorization: Bearer $MASTER_KEY" http://localhost:8090/api/networks/vpn/keys/token 2>/dev/null | grep -o '"token":"[^"]*"' | cut -d '"' -f 4 || echo "")
+  NETMAKER_TOKEN=$(curl -s -X GET -H "Authorization: Bearer $MASTER_KEY" http://localhost:8091/api/networks/vpn/keys/token 2>/dev/null | grep -o '"token":"[^"]*"' | cut -d '"' -f 4 || echo "")
   
   # 方法2: 直接从容器中获取
   if [ -z "$NETMAKER_TOKEN" ]; then

@@ -9,9 +9,11 @@ services:
       SERVER_HOST: "netmaker.your-domain.com"
       COREDNS_ADDR: "127.0.0.1"
       CLIENT_MODE: "on"
-      API_PORT: "8081"
+      API_PORT: "8091"  # 与主环境保持一致
       GRPC_PORT: "50051"
-      SERVER_API_CONN_STRING: "api.netmaker.your-domain.com:443"
+      SERVER_API_CONN_STRING: "api.netmaker.your-domain.com:5443"  # 与主环境保持一致
+      DISABLE_REMOTE_UDP_CHECKS: "true"  # 禁用远程UDP检查
+      SERVER_HTTP_HOST: "localhost:8091"  # 指定正确的HTTP主机
       GRPC_SSL: "on"
       DNS_MODE: "on"
       MASTER_KEY: "your-secure-master-key"
@@ -35,6 +37,8 @@ services:
       - "51821:51821/udp"
       - "53:53/udp"
       - "8883:8883/tcp"
+      - "8091:8091/tcp"  # 添加API端口映射，与主环境保持一致
+      - "3481:3478/udp"  # 修改STUN端口映射，避免冲突
     cap_add:
       - NET_ADMIN
 
