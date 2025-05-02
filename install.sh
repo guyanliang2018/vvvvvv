@@ -452,7 +452,7 @@ EOF
 
   # 更新Caddy配置
   if [ -f "$SCRIPT_DIR/marzban/Caddyfile" ]; then
-    sed -i "s|panel.your-domain.com|panel.$BASE_DOMAIN|g" "$SCRIPT_DIR/marzban/Caddyfile"
+    sed -i "s|panel.your-domain.com:4443|panel.$BASE_DOMAIN:4443|g" "$SCRIPT_DIR/marzban/Caddyfile"
     sed -i "s|monitor.your-domain.com|monitor.$BASE_DOMAIN|g" "$SCRIPT_DIR/marzban/Caddyfile"
   fi
   

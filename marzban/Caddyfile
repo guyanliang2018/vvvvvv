@@ -1,4 +1,4 @@
-panel.your-domain.com {
+panel.your-domain.com:4443 {
     tls {
         protocols tls1.2 tls1.3
     }
