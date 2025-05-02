@@ -1,0 +1,106 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# 网络性能测试脚本 - 定期测试并记录网络性能
+
+# 配置信息
+LOG_FILE="/var/log/network_test.log"
+HOSTNAME=$(hostname)
+IPV4_ADDRESS=$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')
+DATE=$(date "+%Y-%m-%d %H:%M:%S")
+
+# 测试目标
+SPEEDTEST_SERVERS=(
+  "{{ speedtest_server_id1 | default('2461') }}"  # 默认上海电信
+  "{{ speedtest_server_id2 | default('4575') }}"  # 默认北京联通
+)
+
+echo "===== $HOSTNAME 网络测试 ($DATE) =====" > $LOG_FILE
+echo "节点IP: $IPV4_ADDRESS" >> $LOG_FILE
+
+# 基本连通性测试
+echo -e "\n=== 基本连通性测试 ===" >> $LOG_FILE
+for HOST in google.com cloudflare.com github.com; do
+  PING_RESULT=$(ping -c 3 -W 2 $HOST 2>&1)
+  if [[ $? -eq 0 ]]; then
+    AVG_TIME=$(echo "$PING_RESULT" | grep -oP 'avg[^:]*:[^=]*=\s*\K[0-9.]+')
+    echo "$HOST: 可达 (平均延迟: ${AVG_TIME}ms)" >> $LOG_FILE
+  else
+    echo "$HOST: 不可达" >> $LOG_FILE
+  fi
+done
+
+# 主要地区延迟测试
+echo -e "\n=== 地区延迟测试 ===" >> $LOG_FILE
+for HOST in jp.ping.pe us.ping.pe hk.ping.pe kr.ping.pe sg.ping.pe; do
+  PING_RESULT=$(ping -c 5 -W 3 $HOST 2>&1)
+  if [[ $? -eq 0 ]]; then
+    AVG_TIME=$(echo "$PING_RESULT" | grep -oP 'avg[^:]*:[^=]*=\s*\K[0-9.]+')
+    echo "$HOST: ${AVG_TIME}ms" >> $LOG_FILE
+  else
+    echo "$HOST: 超时" >> $LOG_FILE
+  fi
+done
+
+# Speedtest测试
+echo -e "\n=== Speedtest速度测试 ===" >> $LOG_FILE
+for SERVER_ID in "${SPEEDTEST_SERVERS[@]}"; do
+  echo "测试服务器ID: $SERVER_ID" >> $LOG_FILE
+  SPEEDTEST_RESULT=$(speedtest-cli --server $SERVER_ID --simple 2>&1)
+  if [[ $? -eq 0 ]]; then
+    echo "$SPEEDTEST_RESULT" >> $LOG_FILE
+  else
+    echo "测试失败: $SPEEDTEST_RESULT" >> $LOG_FILE
+  fi
+  
+  # 避免频繁测试被限制
+  sleep 5
+done
+
+# 带宽稳定性测试（可选）
+if [[ "{{ enable_stability_test | default('false') }}" == "true" ]]; then
+  echo -e "\n=== 带宽稳定性测试 ===" >> $LOG_FILE
+  if command -v iperf3 &> /dev/null; then
+    IPERF_SERVER="{{ iperf_server | default('iperf.biznetnetworks.com') }}"
+    IPERF_PORT="{{ iperf_port | default('5201') }}"
+    
+    echo "连接到 $IPERF_SERVER:$IPERF_PORT" >> $LOG_FILE
+    IPERF_RESULT=$(iperf3 -c $IPERF_SERVER -p $IPERF_PORT -t 10 -J 2>&1)
+    
+    if [[ $? -eq 0 ]]; then
+      # 解析JSON结果
+      SENT_MBITS=$(echo "$IPERF_RESULT" | grep -oP '"bits_per_second":\s*\K[0-9.]+' | head -1)
+      SENT_MBITS=$(echo "scale=2; $SENT_MBITS / 1000000" | bc)
+      
+      RECEIVED_MBITS=$(echo "$IPERF_RESULT" | grep -oP '"bits_per_second":\s*\K[0-9.]+' | tail -1)
+      RECEIVED_MBITS=$(echo "scale=2; $RECEIVED_MBITS / 1000000" | bc)
+      
+      echo "上传带宽: ${SENT_MBITS} Mbps" >> $LOG_FILE
+      echo "下载带宽: ${RECEIVED_MBITS} Mbps" >> $LOG_FILE
+    else
+      echo "iperf3测试失败" >> $LOG_FILE
+    fi
+  else
+    echo "iperf3未安装，跳过测试" >> $LOG_FILE
+  fi
+fi
+
+# 测试到Marzban面板的连接
+echo -e "\n=== 到控制面板的连接 ===" >> $LOG_FILE
+MARZBAN_SERVER="{{ marzban_server }}"
+PING_MARZBAN=$(ping -c 3 ${MARZBAN_SERVER/https:\/\//} | grep -oP 'time=\K[0-9.]+' | awk '{ total += $1; count++ } END { if (count > 0) print total/count; else print "0" }')
+echo "到Marzban面板的延迟: ${PING_MARZBAN}ms" >> $LOG_FILE
+
+# 将结果上报到Marzban（如果需要）
+if [[ "{{ report_network_test | default('true') }}" == "true" ]]; then
+  # 构建简单摘要
+  SUMMARY=$(grep -A 20 "=== Speedtest速度测试 ===" $LOG_FILE)
+  
+  # 上报到Marzban
+  curl -s -X POST \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer {{ marzban_token }}" \
+    -d "{\"id\":\"{{ node_id }}\",\"network_test\":\"$SUMMARY\"}" \
+    "https://$MARZBAN_SERVER/api/node/network_test"
+fi
+
+echo -e "\n===== 测试完成 =====" >> $LOG_FILE

@@ -1,0 +1,33 @@
+version: '3'
+
+services:
+  xray:
+    image: teddysun/xray:latest
+    container_name: xray
+    restart: always
+    ports:
+      - 443:443
+      - 80:80
+      {% if reality_enabled is defined and reality_enabled %}
+      - {{ reality_port }}:{{ reality_port }}
+      {% endif %}
+    volumes:
+      - ./config.json:/etc/xray/config.json
+      - ./logs:/var/log/xray
+      {% if tls_enabled is defined and tls_enabled %}
+      - {{ tls_cert_path }}:{{ tls_cert_path }}
+      - {{ tls_key_path }}:{{ tls_key_path }}
+      {% endif %}
+    networks:
+      - xray-network
+    environment:
+      - TZ=Asia/Shanghai
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  xray-network:
+    driver: bridge

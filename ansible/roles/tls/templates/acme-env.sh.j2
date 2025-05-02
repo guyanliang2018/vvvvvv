@@ -1,0 +1,30 @@
+#!/bin/bash
+# acme.sh环境变量配置
+# {{ ansible_managed }}
+
+{% if dns_api_type == "dns_cf" %}
+# Cloudflare API配置
+export CF_Key="{{ cloudflare_api_key }}"
+export CF_Email="{{ cloudflare_email }}"
+
+{% elif dns_api_type == "dns_ali" %}
+# 阿里云DNS API配置
+export Ali_Key="{{ aliyun_key }}"
+export Ali_Secret="{{ aliyun_secret }}"
+
+{% elif dns_api_type == "dns_dp" %}
+# DNSPod API配置
+export DP_Id="{{ dnspod_id }}"
+export DP_Key="{{ dnspod_key }}"
+
+{% elif dns_api_type == "dns_gd" %}
+# GoDaddy API配置
+export GD_Key="{{ godaddy_key }}"
+export GD_Secret="{{ godaddy_secret }}"
+
+{% elif dns_api_type == "dns_aws" %}
+# AWS Route53 API配置
+export AWS_ACCESS_KEY_ID="{{ aws_access_key }}"
+export AWS_SECRET_ACCESS_KEY="{{ aws_secret_key }}"
+
+{% endif %}

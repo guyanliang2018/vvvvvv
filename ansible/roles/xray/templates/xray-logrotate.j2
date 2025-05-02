@@ -1,0 +1,13 @@
+/opt/xray/logs/*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 0640 root root
+    sharedscripts
+    postrotate
+        docker kill -s SIGUSR1 xray >/dev/null 2>&1 || true
+    endscript
+}

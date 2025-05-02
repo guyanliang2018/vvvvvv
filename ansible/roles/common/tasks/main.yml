@@ -1,0 +1,76 @@
+---
+# 通用节点配置任务
+
+- name: 更新系统包
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  when: ansible_os_family == "Debian"
+
+- name: 安装基础软件包
+  package:
+    name:
+      - curl
+      - wget
+      - git
+      - unzip
+      - jq
+      - socat
+      - iptables
+      - net-tools
+      - htop
+      - tmux
+      - fail2ban
+    state: present
+
+- name: 设置系统时区
+  timezone:
+    name: Asia/Shanghai
+
+- name: 配置sysctl网络优化
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+  with_items:
+    - { key: 'net.ipv4.ip_forward', value: '1' }
+    - { key: 'net.ipv4.tcp_fastopen', value: '3' }
+    - { key: 'net.core.default_qdisc', value: 'fq' }
+    - { key: 'net.ipv4.tcp_congestion_control', value: 'bbr' }
+    - { key: 'fs.file-max', value: '65535' }
+    - { key: 'net.core.rmem_max', value: '26214400' }
+    - { key: 'net.core.wmem_max', value: '26214400' }
+
+- name: 配置SSH服务安全选项
+  template:
+    src: sshd_config.j2
+    dest: /etc/ssh/sshd_config
+  notify: restart sshd
+
+- name: 配置Fail2Ban
+  template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+  notify: restart fail2ban
+
+- name: 启用并启动服务
+  systemd:
+    name: "{{ item }}"
+    enabled: yes
+    state: started
+  with_items:
+    - fail2ban
+  ignore_errors: yes
+
+- name: 创建定时任务检查系统状态
+  cron:
+    name: "Check system status"
+    minute: "*/30"
+    job: "/usr/local/bin/check_system.sh > /var/log/system_check.log 2>&1"
+
+- name: 安装系统检查脚本
+  template:
+    src: check_system.sh.j2
+    dest: /usr/local/bin/check_system.sh
+    mode: '0755'

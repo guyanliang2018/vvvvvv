@@ -1,0 +1,103 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# 系统状态检查脚本
+
+LOG_FILE="/var/log/system_check.log"
+HOSTNAME=$(hostname)
+DATE=$(date "+%Y-%m-%d %H:%M:%S")
+
+echo "===== $HOSTNAME 系统检查 ($DATE) =====" >> $LOG_FILE
+
+# CPU 负载
+CPU_LOAD=$(uptime | awk '{print $10,$11,$12}')
+echo "CPU负载: $CPU_LOAD" >> $LOG_FILE
+
+# 内存使用情况
+MEM_USAGE=$(free -h | grep "Mem" | awk '{print "总计:"$2", 已用:"$3", 空闲:"$4}')
+echo "内存使用: $MEM_USAGE" >> $LOG_FILE
+
+# 磁盘使用情况
+DISK_USAGE=$(df -h / | awk 'NR==2 {print "总计:"$2", 已用:"$3"("$5"), 可用:"$4}')
+echo "磁盘使用: $DISK_USAGE" >> $LOG_FILE
+
+# 检查Xray状态
+if docker ps | grep -q xray; then
+    XRAY_STATUS="运行中"
+else
+    XRAY_STATUS="未运行"
+fi
+echo "Xray状态: $XRAY_STATUS" >> $LOG_FILE
+
+# 检查Netmaker客户端状态
+if command -v netclient &> /dev/null && netclient list | grep -q "connected"; then
+    NETMAKER_STATUS="已连接"
+else
+    NETMAKER_STATUS="未连接"
+fi
+echo "Netmaker状态: $NETMAKER_STATUS" >> $LOG_FILE
+
+# 检查重要端口
+function check_port() {
+    if netstat -tuln | grep -q ":$1 "; then
+        echo "端口$1: 开放" >> $LOG_FILE
+    else
+        echo "端口$1: 关闭 [警告]" >> $LOG_FILE
+    fi
+}
+
+check_port 22   # SSH
+check_port 80   # HTTP
+check_port 443  # HTTPS
+
+# 检查系统日志中的错误
+ERRORS=$(grep -i error /var/log/syslog | tail -5)
+if [ ! -z "$ERRORS" ]; then
+    echo "最近系统错误:" >> $LOG_FILE
+    echo "$ERRORS" >> $LOG_FILE
+fi
+
+# 检查失败的登录尝试
+FAILED_LOGINS=$(grep -i "Failed password" /var/log/auth.log | tail -3)
+if [ ! -z "$FAILED_LOGINS" ]; then
+    echo "最近失败的登录尝试:" >> $LOG_FILE
+    echo "$FAILED_LOGINS" >> $LOG_FILE
+fi
+
+# 检查节点是否在Marzban面板上线
+if curl -s --connect-timeout 5 https://{{ marzban_server }}/api/node/status \
+    -H "Authorization: Bearer {{ marzban_token }}" | grep -q "online"; then
+    PANEL_STATUS="已连接到面板"
+else
+    PANEL_STATUS="未连接到面板 [警告]"
+fi
+echo "面板连接状态: $PANEL_STATUS" >> $LOG_FILE
+
+echo "===== 检查完成 =====" >> $LOG_FILE
+echo "" >> $LOG_FILE
+
+# 如果发现严重问题，可以通过Telegram发送通知
+if [[ "$XRAY_STATUS" != "运行中" || "$NETMAKER_STATUS" != "已连接" || "$PANEL_STATUS" == *"警告"* ]]; then
+    # 如果配置了Telegram通知
+    if [ -f "/etc/telegram-notify.conf" ]; then
+        source /etc/telegram-notify.conf
+        ALERT_MESSAGE="⚠️ $HOSTNAME 系统告警\n"
+        ALERT_MESSAGE+="时间: $DATE\n"
+        
+        if [ "$XRAY_STATUS" != "运行中" ]; then
+            ALERT_MESSAGE+="Xray服务: $XRAY_STATUS\n"
+        fi
+        
+        if [ "$NETMAKER_STATUS" != "已连接" ]; then
+            ALERT_MESSAGE+="Netmaker: $NETMAKER_STATUS\n"
+        fi
+        
+        if [ "$PANEL_STATUS" == *"警告"* ]; then
+            ALERT_MESSAGE+="面板连接: $PANEL_STATUS\n"
+        fi
+        
+        curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\":\"$TELEGRAM_CHAT_ID\",\"text\":\"$ALERT_MESSAGE\",\"parse_mode\":\"Markdown\"}" \
+            "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" > /dev/null
+    fi
+fi

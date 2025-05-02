@@ -1,0 +1,58 @@
+panel.your-domain.com {
+    tls {
+        protocols tls1.2 tls1.3
+    }
+    
+    # Marzban面板
+    reverse_proxy marzban:8000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+    
+    handle_errors {
+        respond "{http.error.status_code} {http.error.status_text}"
+    }
+    
+    log {
+        output file /var/log/caddy/panel.log
+    }
+}
+
+monitor.your-domain.com {
+    tls {
+        protocols tls1.2 tls1.3
+    }
+    
+    # Grafana监控面板
+    route /grafana/* {
+        uri strip_prefix /grafana
+        reverse_proxy grafana:3000
+    }
+    
+    # Prometheus
+    route /prometheus/* {
+        uri strip_prefix /prometheus
+        reverse_proxy prometheus:9090
+    }
+    
+    # Alertmanager
+    route /alertmanager/* {
+        uri strip_prefix /alertmanager
+        reverse_proxy alertmanager:9093
+    }
+    
+    handle_errors {
+        respond "{http.error.status_code} {http.error.status_text}"
+    }
+    
+    log {
+        output file /var/log/caddy/monitor.log
+    }
+    
+    # 基本认证
+    basicauth /* {
+        admin JDJhJDEwJEVCNmdGMUVqd2RQQ2RzYlFVSkFPenVjeGguYmI3WE9HYndtVkx6OHdpWVZjN3dOZnVaUlZX
+    }
+}

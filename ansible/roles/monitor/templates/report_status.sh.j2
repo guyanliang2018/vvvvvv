@@ -1,0 +1,68 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# 节点状态上报脚本 - 定期向Marzban面板上报节点状态
+
+# 配置信息
+NODE_ID="{{ node_id }}"
+MARZBAN_SERVER="{{ marzban_server }}"
+MARZBAN_TOKEN="{{ marzban_token }}"
+HOSTNAME=$(hostname)
+IPV4_ADDRESS=$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')
+INTRANET_IP=$(hostname -I | awk '{print $1}')
+
+# 收集系统信息
+UPTIME=$(uptime -p)
+LOAD=$(uptime | awk -F'[a-z]:' '{ print $2}' | awk -F',' '{ print $1}' | tr -d ' ')
+CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
+MEM_TOTAL=$(free -m | awk '/^Mem:/{print $2}')
+MEM_USED=$(free -m | awk '/^Mem:/{print $3}')
+MEM_USAGE=$(echo "scale=2; $MEM_USED * 100 / $MEM_TOTAL" | bc)
+DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
+
+# 收集Xray信息
+if docker ps | grep -q xray; then
+    XRAY_STATUS="running"
+    
+    # 尝试从Xray获取连接数和传输统计
+    CONNECTIONS=$(docker exec xray xray api statsquery --server=127.0.0.1:8080 | grep -c "inbound>>>")
+    UPLINK=$(docker exec xray xray api statsquery --server=127.0.0.1:8080 -pattern "inbound>>>uplink" | grep "value" | awk '{sum+=$2} END {print sum}')
+    DOWNLINK=$(docker exec xray xray api statsquery --server=127.0.0.1:8080 -pattern "inbound>>>downlink" | grep "value" | awk '{sum+=$2} END {print sum}')
+else
+    XRAY_STATUS="stopped"
+    CONNECTIONS=0
+    UPLINK=0
+    DOWNLINK=0
+fi
+
+# 测量到面板的延迟
+PING_MARZBAN=$(ping -c 3 ${MARZBAN_SERVER/https:\/\//} | grep -oP 'time=\K[0-9.]+' | awk '{ total += $1; count++ } END { if (count > 0) print total/count; else print "0" }')
+
+# 构建JSON上报数据
+JSON_DATA=$(cat <<EOF
+{
+  "id": "$NODE_ID",
+  "status": "$XRAY_STATUS",
+  "ip": "$IPV4_ADDRESS",
+  "intranet_ip": "$INTRANET_IP",
+  "uptime": "$UPTIME",
+  "load": "$LOAD",
+  "cpu_usage": $CPU_USAGE,
+  "memory_usage": $MEM_USAGE,
+  "disk_usage": $DISK_USAGE,
+  "connections": $CONNECTIONS,
+  "uplink": $UPLINK,
+  "downlink": $DOWNLINK,
+  "ping": $PING_MARZBAN,
+  "hostname": "$HOSTNAME"
+}
+EOF
+)
+
+# 上报到Marzban
+curl -s -X POST \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $MARZBAN_TOKEN" \
+  -d "$JSON_DATA" \
+  "https://$MARZBAN_SERVER/api/node/report"
+
+exit 0

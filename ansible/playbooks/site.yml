@@ -1,0 +1,30 @@
+---
+# site.yml - 主Ansible playbook用于配置和管理VPS节点
+
+- name: 配置所有节点共用设置
+  hosts: all
+  become: true
+  roles:
+    - role: common
+      tags: common
+
+- name: 配置Xray节点
+  hosts: xray_nodes
+  become: true
+  roles:
+    - role: xray
+      tags: xray
+
+- name: 配置TLS证书
+  hosts: xray_nodes
+  become: true
+  roles:
+    - role: tls
+      tags: tls
+
+- name: 配置监控组件
+  hosts: xray_nodes
+  become: true
+  roles:
+    - role: monitor
+      tags: monitor

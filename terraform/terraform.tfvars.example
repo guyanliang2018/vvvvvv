@@ -1,0 +1,66 @@
+# Terraform 变量配置示例文件
+# 复制为 terraform.tfvars 并修改为您的实际配置
+
+# API密钥配置（替换为您的实际API密钥）
+vultr_api_key    = "YOUR_VULTR_API_KEY"
+do_token         = "YOUR_DIGITALOCEAN_TOKEN"
+linode_token     = "YOUR_LINODE_TOKEN"
+aws_access_key   = "YOUR_AWS_ACCESS_KEY"
+aws_secret_key   = "YOUR_AWS_SECRET_KEY"
+
+# Marzban和Netmaker配置
+marzban_server   = "https://panel.yourdomain.com"
+marzban_token    = "YOUR_MARZBAN_API_TOKEN"
+netmaker_server  = "https://netmaker.yourdomain.com"
+netmaker_token   = "YOUR_NETMAKER_API_TOKEN"
+netmaker_network_name = "vpn"
+
+# SSH密钥配置
+ssh_private_key_path = "~/.ssh/id_rsa"  # 用于连接杂牌VPS的SSH私钥路径
+
+# 云服务商节点配置
+vultr_node_count     = 2  # Vultr节点数量
+do_node_count        = 2  # DigitalOcean节点数量
+linode_node_count    = 2  # Linode节点数量
+aws_node_count       = 1  # AWS节点数量
+
+# 区域分布配置
+vultr_regions     = {
+  "sgp" = 1  # 新加坡1个节点
+  "fra" = 1  # 法兰克福1个节点
+}
+do_regions        = {
+  "sgp1" = 1  # 新加坡1个节点
+  "fra1" = 1  # 法兰克福1个节点
+}
+linode_regions    = {
+  "ap-south" = 1  # 新加坡1个节点
+  "eu-central" = 1  # 法兰克福1个节点
+}
+aws_regions       = {
+  "ap-southeast-1" = 1  # 新加坡1个节点
+}
+
+# 通用杂牌VPS节点配置示例
+generic_nodes = [
+  {
+    name       = "hk-vps-01"           # 节点名称，会显示在Marzban面板中
+    ip_address = "123.456.789.10"      # 节点IP地址
+    provider   = "unknown"             # 供应商标识（自定义文本）
+    region     = "hk"                  # 区域标识（自定义文本）
+    ssh_user   = "root"                # SSH用户名
+    ssh_port   = 22                    # SSH端口
+  },
+  {
+    name       = "jp-vps-01"
+    ip_address = "123.456.789.11"
+    provider   = "unknown"
+    region     = "jp"
+    ssh_user   = "ubuntu"
+    ssh_port   = 22
+  },
+  # 可以添加更多杂牌VPS节点
+]
+
+# 其他配置
+cloudinit_file     = "../cloud-init/base-cloudinit.yml"

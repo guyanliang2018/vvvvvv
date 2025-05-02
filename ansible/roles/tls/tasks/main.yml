@@ -1,0 +1,111 @@
+---
+# TLS证书管理任务
+
+- name: 创建证书目录
+  file:
+    path: "{{ cert_directory }}"
+    state: directory
+    mode: '0755'
+
+- name: 检查是否安装socat
+  package:
+    name: socat
+    state: present
+
+- name: 检查是否安装acme.sh
+  command: which acme.sh
+  register: acme_installed
+  failed_when: false
+  changed_when: false
+
+- name: 安装acme.sh
+  block:
+    - name: 下载acme.sh安装脚本
+      get_url:
+        url: https://get.acme.sh
+        dest: /tmp/acme.sh
+        mode: '0755'
+
+    - name: 运行acme.sh安装脚本
+      shell: /tmp/acme.sh --install --home /root/.acme.sh --accountemail {{ acme_email }}
+      args:
+        creates: /root/.acme.sh/acme.sh
+      register: acme_install_result
+      changed_when: acme_install_result.rc == 0
+  when: acme_installed.rc != 0
+
+- name: 配置DNS API环境变量
+  block:
+    - name: 创建acme.sh环境变量文件
+      template:
+        src: acme-env.sh.j2
+        dest: /root/.acme.sh/acme-env.sh
+        mode: '0600'
+
+    - name: 确保环境变量文件被加载
+      lineinfile:
+        path: /root/.acme.sh/account.conf
+        line: '. "/root/.acme.sh/acme-env.sh"'
+        state: present
+  when: dns_api_type is defined and dns_api_type != ""
+
+- name: 检查现有证书
+  stat:
+    path: "{{ cert_directory }}/{{ domain }}.crt"
+  register: cert_exists
+
+- name: 获取域名证书 - DNS API方式
+  shell: >
+    source /root/.acme.sh/acme-env.sh && 
+    /root/.acme.sh/acme.sh --issue -d {{ domain }} --dns {{ dns_api_type }} 
+    --home /root/.acme.sh --cert-file {{ cert_directory }}/{{ domain }}.crt 
+    --key-file {{ cert_directory }}/{{ domain }}.key 
+    --fullchain-file {{ cert_directory }}/{{ domain }}.fullchain.crt 
+    --force
+  args:
+    executable: /bin/bash
+  register: issue_result
+  failed_when: 
+    - issue_result.rc != 0 
+    - issue_result.rc != 2
+  changed_when: issue_result.rc == 0
+  when: 
+    - not cert_exists.stat.exists or (cert_renew_force | default(false))
+    - dns_api_type is defined and dns_api_type != ""
+
+- name: 获取域名证书 - HTTP方式
+  shell: >
+    /root/.acme.sh/acme.sh --issue -d {{ domain }} --webroot /var/www/html 
+    --home /root/.acme.sh --cert-file {{ cert_directory }}/{{ domain }}.crt 
+    --key-file {{ cert_directory }}/{{ domain }}.key 
+    --fullchain-file {{ cert_directory }}/{{ domain }}.fullchain.crt 
+    --force
+  args:
+    executable: /bin/bash
+  register: issue_result
+  failed_when: 
+    - issue_result.rc != 0 
+    - issue_result.rc != 2
+  changed_when: issue_result.rc == 0
+  when: 
+    - not cert_exists.stat.exists or (cert_renew_force | default(false))
+    - (dns_api_type is not defined or dns_api_type == "")
+
+- name: 设置证书自动更新
+  cron:
+    name: "更新 {{ domain }} 证书"
+    minute: "{{ 59 | random }}"
+    hour: "{{ 23 | random }}"
+    day: "{{ 20 + 7 | random }}"
+    month: "*"
+    job: "/root/.acme.sh/acme.sh --renew -d {{ domain }} --home /root/.acme.sh --cert-file {{ cert_directory }}/{{ domain }}.crt --key-file {{ cert_directory }}/{{ domain }}.key --fullchain-file {{ cert_directory }}/{{ domain }}.fullchain.crt && docker kill -s USR1 xray"
+
+- name: 确保证书权限正确
+  file:
+    path: "{{ item }}"
+    mode: '0644'
+  with_items:
+    - "{{ cert_directory }}/{{ domain }}.crt"
+    - "{{ cert_directory }}/{{ domain }}.fullchain.crt"
+    - "{{ cert_directory }}/{{ domain }}.key"
+  when: cert_exists.stat.exists or issue_result.rc == 0

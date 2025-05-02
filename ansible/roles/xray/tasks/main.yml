@@ -1,0 +1,92 @@
+---
+# xray角色任务
+
+- name: 确保Xray目录存在
+  file:
+    path: /opt/xray
+    state: directory
+    mode: '0755'
+
+- name: 确保Xray日志目录存在
+  file:
+    path: /opt/xray/logs
+    state: directory
+    mode: '0755'
+
+- name: 检查是否安装Docker
+  command: which docker
+  register: docker_installed
+  failed_when: false
+  changed_when: false
+
+- name: 安装Docker（如果未安装）
+  block:
+    - name: 获取Docker安装脚本
+      get_url:
+        url: https://get.docker.com
+        dest: /tmp/get-docker.sh
+        mode: '0755'
+
+    - name: 运行Docker安装脚本
+      command: /tmp/get-docker.sh
+      register: docker_install_result
+      changed_when: docker_install_result.rc == 0
+
+    - name: 启用并启动Docker服务
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+  when: docker_installed.rc != 0
+
+- name: 检查是否安装Docker Compose
+  command: which docker-compose
+  register: docker_compose_installed
+  failed_when: false
+  changed_when: false
+
+- name: 安装Docker Compose（如果未安装）
+  get_url:
+    url: "https://github.com/docker/compose/releases/download/v2.23.0/docker-compose-{{ ansible_system }}-{{ ansible_architecture }}"
+    dest: /usr/local/bin/docker-compose
+    mode: '0755'
+  when: docker_compose_installed.rc != 0
+
+- name: 拉取Xray Docker镜像
+  docker_image:
+    name: teddysun/xray
+    source: pull
+    force_source: yes
+
+- name: 复制Xray配置模板
+  template:
+    src: xray_config.json.j2
+    dest: /opt/xray/config.json
+    mode: '0644'
+  notify: restart xray
+
+- name: 复制Xray Docker Compose配置
+  template:
+    src: docker-compose.yml.j2
+    dest: /opt/xray/docker-compose.yml
+    mode: '0644'
+  notify: restart xray
+
+- name: 确保Xray服务运行
+  docker_compose:
+    project_src: /opt/xray
+    state: present
+  register: output
+
+- name: 设置定时任务更新配置
+  cron:
+    name: "更新Xray配置"
+    minute: "0"
+    hour: "*/6"
+    job: "cd /opt/xray && curl -s -H 'Authorization: Bearer {{ marzban_token }}' {{ marzban_server }}/api/node/{{ node_id }}/config > config.json.new && [ -s config.json.new ] && mv config.json.new config.json && docker kill -s USR1 xray"
+
+- name: 设置日志轮替
+  template:
+    src: xray-logrotate.j2
+    dest: /etc/logrotate.d/xray
+    mode: '0644'

@@ -1,0 +1,36 @@
+[DEFAULT]
+# {{ ansible_managed }}
+# 默认安全配置
+bantime = 1h
+findtime = 10m
+maxretry = 5
+banaction = iptables-multiport
+ignoreip = 127.0.0.1/8 ::1
+
+# SSH保护
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+bantime = 3h
+
+# 防止暴力破解
+[sshd-aggressive]
+enabled = true
+port = ssh
+filter = sshd-aggressive
+logpath = /var/log/auth.log
+maxretry = 1
+bantime = 24h
+findtime = 600
+
+# 保护端口80和443
+[http-xray]
+enabled = true
+port = http,https
+filter = apache-auth
+logpath = /var/log/nginx/access.log
+maxretry = 15
+findtime = 5m

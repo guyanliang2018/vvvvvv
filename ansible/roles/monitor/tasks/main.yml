@@ -1,0 +1,160 @@
+---
+# 监控组件角色任务
+
+- name: 检查是否安装Node Exporter
+  stat:
+    path: /usr/local/bin/node_exporter
+  register: node_exporter_exists
+
+- name: 安装Node Exporter
+  block:
+    - name: 下载Node Exporter
+      get_url:
+        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+        dest: /tmp/node_exporter.tar.gz
+        mode: '0644'
+
+    - name: 解压Node Exporter
+      unarchive:
+        src: /tmp/node_exporter.tar.gz
+        dest: /tmp/
+        remote_src: yes
+
+    - name: 复制Node Exporter二进制文件
+      copy:
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+        dest: /usr/local/bin/node_exporter
+        remote_src: yes
+        mode: '0755'
+
+    - name: 创建Node Exporter systemd服务
+      template:
+        src: node_exporter.service.j2
+        dest: /etc/systemd/system/node_exporter.service
+        mode: '0644'
+
+    - name: 启用并启动Node Exporter服务
+      systemd:
+        name: node_exporter
+        enabled: yes
+        state: started
+        daemon_reload: yes
+  when: not node_exporter_exists.stat.exists
+
+- name: 检查是否安装Xray Exporter
+  stat:
+    path: /usr/local/bin/xray_exporter
+  register: xray_exporter_exists
+
+- name: 安装Xray Exporter (如果需要)
+  block:
+    - name: 下载Xray Exporter
+      get_url:
+        url: "{{ xray_exporter_url }}"
+        dest: /usr/local/bin/xray_exporter
+        mode: '0755'
+      when: xray_exporter_url is defined
+
+    - name: 创建Xray Exporter配置
+      template:
+        src: xray_exporter.yml.j2
+        dest: /etc/xray_exporter.yml
+        mode: '0644'
+
+    - name: 创建Xray Exporter systemd服务
+      template:
+        src: xray_exporter.service.j2
+        dest: /etc/systemd/system/xray_exporter.service
+        mode: '0644'
+
+    - name: 启用并启动Xray Exporter服务
+      systemd:
+        name: xray_exporter
+        enabled: yes
+        state: started
+        daemon_reload: yes
+  when: xray_exporter_install | default(false) and not xray_exporter_exists.stat.exists
+
+- name: 安装网络测速工具
+  package:
+    name:
+      - iperf3
+      - speedtest-cli
+    state: present
+
+- name: 创建网络测速脚本
+  template:
+    src: network_test.sh.j2
+    dest: /usr/local/bin/network_test.sh
+    mode: '0755'
+
+- name: 设置网络测速定时任务
+  cron:
+    name: "网络性能测试"
+    minute: "{{ 30 + 15 | random }}"
+    hour: "*/3"
+    job: "/usr/local/bin/network_test.sh > /var/log/network_test.log 2>&1"
+
+- name: 创建节点信息上报脚本
+  template:
+    src: report_status.sh.j2
+    dest: /usr/local/bin/report_status.sh
+    mode: '0755'
+
+- name: 设置节点信息上报定时任务
+  cron:
+    name: "节点状态上报"
+    minute: "*/5"
+    job: "/usr/local/bin/report_status.sh > /dev/null 2>&1"
+
+- name: 配置Promtail日志收集
+  block:
+    - name: 创建Promtail配置目录
+      file:
+        path: /etc/promtail
+        state: directory
+        mode: '0755'
+
+    - name: 安装Promtail
+      get_url:
+        url: "{{ promtail_url | default('https://github.com/grafana/loki/releases/download/v2.8.2/promtail-linux-amd64.zip') }}"
+        dest: /tmp/promtail.zip
+        mode: '0644'
+
+    - name: 解压Promtail
+      unarchive:
+        src: /tmp/promtail.zip
+        dest: /usr/local/bin/
+        remote_src: yes
+        extra_opts:
+          - promtail-linux-amd64
+        creates: /usr/local/bin/promtail-linux-amd64
+      when: "'zip' in promtail_url | default('')"
+
+    - name: 重命名Promtail
+      copy:
+        src: /usr/local/bin/promtail-linux-amd64
+        dest: /usr/local/bin/promtail
+        remote_src: yes
+        mode: '0755'
+      when: "'zip' in promtail_url | default('')"
+
+    - name: 创建Promtail配置
+      template:
+        src: promtail-config.yml.j2
+        dest: /etc/promtail/config.yml
+        mode: '0644'
+
+    - name: 创建Promtail systemd服务
+      template:
+        src: promtail.service.j2
+        dest: /etc/systemd/system/promtail.service
+        mode: '0644'
+
+    - name: 启用并启动Promtail服务
+      systemd:
+        name: promtail
+        enabled: yes
+        state: started
+        daemon_reload: yes
+  when: log_collection_enabled | default(false)

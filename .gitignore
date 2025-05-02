@@ -1,0 +1,54 @@
+# 敏感凭证文件
+credentials.env
+.env
+*.pem
+*.key
+*.crt
+*.cert
+id_rsa*
+
+# 数据库和数据文件
+*/mysql/
+*/data/
+*/certs/
+/backups/
+
+# Terraform文件
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars
+!*.tfvars.example
+
+# Ansible临时文件
+*.retry
+
+# 日志文件
+*.log
+*/logs/
+
+# Docker数据
+*/caddy-data/
+*/caddy-config/
+*/prometheus-data/
+*/grafana/
+*/alertmanager/
+
+# macOS系统文件
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# 临时文件
+*.tmp
+*.swp
+*.swo
+*~
+.*.sw?
+.~lock.*
+
+# 临时目录
+/tmp
+/.tmp

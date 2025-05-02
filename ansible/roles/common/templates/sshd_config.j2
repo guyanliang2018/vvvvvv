@@ -1,0 +1,38 @@
+# 安全优化的SSH配置
+# {{ ansible_managed }}
+
+# 基本配置
+Port 22
+Protocol 2
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+# 日志配置
+SyslogFacility AUTH
+LogLevel INFO
+
+# 认证配置
+LoginGraceTime 30s
+PermitRootLogin prohibit-password
+StrictModes yes
+MaxAuthTries 3
+MaxSessions 5
+
+# 安全加固
+PubkeyAuthentication yes
+PasswordAuthentication no
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+UsePAM yes
+X11Forwarding no
+PrintMotd no
+AcceptEnv LANG LC_*
+AllowTcpForwarding yes
+AllowAgentForwarding yes
+PermitTunnel yes
+
+# 会话维护
+ClientAliveInterval 300
+ClientAliveCountMax 2
+TCPKeepAlive yes
