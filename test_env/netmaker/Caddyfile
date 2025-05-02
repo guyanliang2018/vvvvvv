@@ -1,0 +1,51 @@
+netmaker.your-domain.com {
+    tls {
+        protocols tls1.2 tls1.3
+    }
+    
+    reverse_proxy netmaker:8081 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+    
+    handle_errors {
+        respond "{http.error.status_code} {http.error.status_text}"
+    }
+    
+    log {
+        output file /var/log/caddy/netmaker-ui.log
+    }
+}
+
+api.netmaker.your-domain.com {
+    tls {
+        protocols tls1.2 tls1.3
+    }
+    
+    @grpc {
+        protocol grpc
+    }
+    
+    handle @grpc {
+        reverse_proxy h2c://netmaker:50051
+    }
+    
+    handle {
+        reverse_proxy netmaker:8081 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+    
+    handle_errors {
+        respond "{http.error.status_code} {http.error.status_text}"
+    }
+    
+    log {
+        output file /var/log/caddy/netmaker-api.log
+    }
+}

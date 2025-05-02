@@ -1,0 +1,57 @@
+version: '3'
+
+services:
+  test-node-1:
+    image: ubuntu:20.04
+    hostname: test-node-1
+    container_name: test-node-1
+    restart: always
+    privileged: true
+    volumes:
+      - ./node1:/root/data
+    command: >
+      bash -c "apt-get update && 
+              apt-get install -y curl wget nano openssh-server sudo iproute2 net-tools && 
+              mkdir -p /run/sshd && 
+              echo 'root:testpassword' | chpasswd && 
+              sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config &&
+              echo 'AuthorizedKeysFile .ssh/authorized_keys' >> /etc/ssh/sshd_config &&
+              mkdir -p /root/.ssh &&
+              chmod 700 /root/.ssh &&
+              /usr/sbin/sshd -D"
+    networks:
+      test_network:
+        ipv4_address: 192.168.100.101
+    ports:
+      - "2201:22"  # 测试节点1的SSH端口映射
+
+  test-node-2:
+    image: ubuntu:20.04
+    hostname: test-node-2
+    container_name: test-node-2
+    restart: always
+    privileged: true
+    volumes:
+      - ./node2:/root/data
+    command: >
+      bash -c "apt-get update && 
+              apt-get install -y curl wget nano openssh-server sudo iproute2 net-tools && 
+              mkdir -p /run/sshd && 
+              echo 'root:testpassword' | chpasswd && 
+              sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config &&
+              echo 'AuthorizedKeysFile .ssh/authorized_keys' >> /etc/ssh/sshd_config &&
+              mkdir -p /root/.ssh &&
+              chmod 700 /root/.ssh &&
+              /usr/sbin/sshd -D"
+    networks:
+      test_network:
+        ipv4_address: 192.168.100.102
+    ports:
+      - "2202:22"  # 测试节点2的SSH端口映射
+
+networks:
+  test_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.100.0/24

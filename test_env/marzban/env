@@ -1,0 +1,39 @@
+# Marzban Panel 测试环境配置
+SUDO_USERNAME=admin
+SUDO_PASSWORD=admin
+
+# 安全设置
+XRAY_JSON=/var/lib/marzban/xray_config.json
+UVICORN_HOST=0.0.0.0
+UVICORN_PORT=8000
+
+# 数据库配置
+MYSQL_HOST=mariadb
+MYSQL_PORT=3306
+MYSQL_USER=marzban
+MYSQL_PASSWORD=marzban_db_password
+MYSQL_DATABASE=marzban
+MYSQL_ROOT_PASSWORD=marzban_db_password
+
+# TLS设置
+XRAY_SUBSCRIPTION_URL_PREFIX=http://localhost:8000
+
+# API和节点设置
+API_ENDPOINT=0.0.0.0:8000
+NODE_ID=
+API_KEY=marzban_api_key_for_test
+
+# 定时任务 - 测试环境关闭定时任务
+DISABLE_SCHEDULED_TASKS=true
+SCHEDULER_INTERVAL=86400
+
+# 安全设置
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=1440
+
+# 测试环境配置
+TEST_MODE=true
+
+# Telegram机器人配置
+TELEGRAM_API_TOKEN=your_telegram_bot_token
+TELEGRAM_ADMIN_ID=your_telegram_id
+TELEGRAM_PROXY=

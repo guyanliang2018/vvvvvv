@@ -1,0 +1,29 @@
+# 测试配置
+marzban_server   = "http://localhost:8000"
+marzban_token    = "marzban_api_key_for_test"
+netmaker_server  = "http://localhost:8081"
+netmaker_token   = "test-master-key"
+netmaker_network_name = "vpn"
+
+# SSH密钥配置
+ssh_private_key_path = "/Users/xigua/vpn3/test_env/ssh_keys/id_rsa"
+
+# 通用杂牌VPS节点配置
+generic_nodes = [
+  {
+    name       = "test-node-1"
+    ip_address = "192.168.100.101"
+    provider   = "test"
+    region     = "local"
+    ssh_user   = "root"
+    ssh_port   = 22
+  },
+  {
+    name       = "test-node-2"
+    ip_address = "192.168.100.102"
+    provider   = "test"
+    region     = "local"
+    ssh_user   = "root"
+    ssh_port   = 22
+  }
+]

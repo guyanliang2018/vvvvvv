@@ -1,0 +1,90 @@
+version: '3'
+
+services:
+  marzban:
+    image: gozargah/marzban:latest
+    restart: always
+    env_file:
+      - ./env
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./data:/var/lib/marzban
+      - ./certs:/var/lib/marzban/certs
+    depends_on:
+      - mariadb
+    networks:
+      - marzban-network
+
+  mariadb:
+    image: mariadb:10.11
+    restart: always
+    env_file:
+      - ./env-db
+    volumes:
+      - ./mysql:/var/lib/mysql
+    networks:
+      - marzban-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: always
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - ./prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    networks:
+      - marzban-network
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: always
+    volumes:
+      - ./grafana:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=secure_password
+    ports:
+      - "3000:3000"
+    networks:
+      - marzban-network
+    depends_on:
+      - prometheus
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    restart: always
+    volumes:
+      - ./alertmanager:/etc/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - "9093:9093"
+    networks:
+      - marzban-network
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy-data:/data
+      - ./caddy-config:/config
+    networks:
+      - marzban-network
+
+networks:
+  marzban-network:
+    driver: bridge

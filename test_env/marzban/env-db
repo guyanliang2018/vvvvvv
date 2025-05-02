@@ -1,0 +1,5 @@
+# MariaDB 环境配置
+MYSQL_ROOT_PASSWORD=marzban_db_password
+MYSQL_DATABASE=marzban
+MYSQL_USER=marzban
+MYSQL_PASSWORD=marzban_db_password

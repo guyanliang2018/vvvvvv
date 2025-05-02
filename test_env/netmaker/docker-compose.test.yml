@@ -1,0 +1,38 @@
+version: '3'
+
+services:
+  netmaker:
+    image: gravitl/netmaker:v0.18.6
+    restart: always
+    environment:
+      SERVER_HOST: localhost
+      COREDNS_ENABLED: "false"
+      CLIENT_MODE: "off"
+      API_PORT: "8081"
+      MASTER_KEY: "test-master-key"
+      DATABASE: "sqlite"
+      DISPLAY_KEYS: "true"
+      DEBUG_MODE: "true"
+      SERVER_HTTP_HOST: "localhost:8081"
+      DNS_MODE: "off"
+    volumes:
+      - ./data:/root/data
+    networks:
+      - netmaker-network
+    ports:
+      - "8081:8081"  # 测试环境直接暴露API端口
+      - "51821-51830:51821-51830/udp"  # WireGuard端口范围
+
+  netmaker-ui:
+    image: gravitl/netmaker-ui:v0.18.6
+    restart: always
+    environment:
+      BACKEND_URL: "http://localhost:8081"
+    networks:
+      - netmaker-network
+    ports:
+      - "8082:80"  # 测试环境直接暴露UI端口
+
+networks:
+  netmaker-network:
+    driver: bridge

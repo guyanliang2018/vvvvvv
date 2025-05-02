@@ -1,0 +1,82 @@
+version: '3'
+
+services:
+  marzban:
+    image: gozargah/marzban:latest
+    restart: always
+    env_file:
+      - ./env
+    volumes:
+      - ./data:/var/lib/marzban
+    networks:
+      - marzban-network
+    depends_on:
+      - mariadb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/system"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "8000:8000"  # 测试环境直接暴露API端口
+      - "8443:8443"  # 测试环境直接暴露面板端口
+      - "9443:8443"  # 添加备用端口避免代理冲突
+
+  mariadb:
+    image: mariadb:10.6
+    restart: always
+    env_file:
+      - ./env-db
+    volumes:
+      - ./mysql:/var/lib/mysql
+    networks:
+      - marzban-network
+    healthcheck:
+      test: mysqladmin ping -h localhost -u root --password=$$MYSQL_ROOT_PASSWORD
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: always
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/data:/prometheus
+    networks:
+      - marzban-network
+    ports:
+      - "9090:9090"  # 测试环境直接暴露Prometheus
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: always
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana:/var/lib/grafana
+    networks:
+      - marzban-network
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"  # 测试环境直接暴露Grafana
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    restart: always
+    volumes:
+      - ./alertmanager:/etc/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - marzban-network
+    ports:
+      - "9093:9093"  # 测试环境直接暴露Alertmanager
+
+networks:
+  marzban-network:
+    driver: bridge
