@@ -509,7 +509,7 @@ setup_netmaker() {
   
   # 检查并清理Netmaker相关端口
   echo -e "${YELLOW}检查关键端口是否可用...${NC}"
-  for port in 8091 3481 8883 51821 53; do
+  for port in 8091 3481 8884 51821 53; do
     check_port $port
   done
   
