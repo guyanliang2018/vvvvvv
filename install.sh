@@ -466,21 +466,46 @@ EOF
   # 启动Marzban面板
   if [ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "panel" ]; then
     echo -e "${BLUE}启动Marzban面板...${NC}"
+    
+    # 添加错误处理
+    echo -e "${YELLOW}清理可能的残留容器...${NC}"
+    docker stop marzban_marzban_1 marzban_caddy_1 marzban_mariadb_1 marzban_prometheus_1 marzban_grafana_1 marzban_alertmanager_1 2>/dev/null || true
+    docker rm marzban_marzban_1 marzban_caddy_1 marzban_mariadb_1 marzban_prometheus_1 marzban_grafana_1 marzban_alertmanager_1 2>/dev/null || true
+    
     cd "$SCRIPT_DIR/marzban"
+    docker-compose down 2>/dev/null || true
     docker-compose up -d
     
     # 等待面板启动
     echo -e "${YELLOW}等待面板启动...${NC}"
-    sleep 10
+    sleep 15
     
     # 验证面板是否正常工作
-    PANEL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://panel.$BASE_DOMAIN:4443 || echo "000")
-    if [ "$PANEL_STATUS" == "200" ] || [ "$PANEL_STATUS" == "301" ] || [ "$PANEL_STATUS" == "302" ]; then
-      echo -e "${GREEN}Marzban面板已成功启动，可以通过 https://panel.$BASE_DOMAIN:4443 访问${NC}"
-      echo -e "${GREEN}登录凭证: 用户名 admin 密码 $ADMIN_PASSWORD${NC}"
+    # 首先确认面板容器是否运行
+    MARZBAN_RUNNING=$(docker ps | grep marzban_marzban_1 | wc -l)
+    
+    if [ "$MARZBAN_RUNNING" -gt 0 ]; then
+      echo -e "${GREEN}Marzban容器正在运行${NC}"
+      PANEL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -k https://panel.$BASE_DOMAIN:4443 2>/dev/null || echo "000")
+      
+      if [ "$PANEL_STATUS" == "200" ] || [ "$PANEL_STATUS" == "301" ] || [ "$PANEL_STATUS" == "302" ]; then
+        echo -e "${GREEN}Marzban面板已成功启动，可以通过 https://panel.$BASE_DOMAIN:4443 访问${NC}"
+        echo -e "${GREEN}登录凭证: 用户名 admin 密码 $ADMIN_PASSWORD${NC}"
+      else
+        echo -e "${YELLOW}Marzban面板返回状态码: $PANEL_STATUS${NC}"
+        echo -e "${YELLOW}请手动测试面板URL: https://panel.$BASE_DOMAIN:4443${NC}"
+        echo -e "${YELLOW}如果无法访问，请检查DNS解析和防火墙设置${NC}"
+        
+        # 尝试添加本地hosts文件解析仅用于服务器测试
+        SERVER_IP=$(hostname -I | awk '{print $1}')
+        echo -e "${YELLOW}添加本地hosts文件解析仅用于测试: $SERVER_IP panel.$BASE_DOMAIN${NC}"
+        echo "$SERVER_IP panel.$BASE_DOMAIN" >> /etc/hosts
+      fi
     else
-      echo -e "${YELLOW}Marzban面板可能未正确启动，请检查配置和日志${NC}"
+      echo -e "${RED}Marzban容器启动失败，请检查日志:${NC}"
+      docker-compose logs marzban
       echo -e "${YELLOW}面板URL: https://panel.$BASE_DOMAIN:4443${NC}"
+      echo -e "${YELLOW}如需手动排查，请运行: diagnostics.sh 脚本${NC}"
     fi
   fi
 }
