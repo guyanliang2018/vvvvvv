@@ -346,6 +346,31 @@ setup_credentials() {
           continue
         fi
         
+        # 保留这些重要变量的原始值（如果它们不是_value结尾的默认值）
+        if [[ "$var_name" == "MARZBAN_API_TOKEN" || "$var_name" == "MARZBAN_ADMIN_PASSWORD" || \
+              "$var_name" == "API_KEY" || "$var_name" == "MYSQL_PASSWORD" ]]; then
+          # 检查如果变量值看起来是有效的（不是默认值格式）
+          if [[ ! "$var_value" =~ your_.*_value$ && ! "$var_value" =~ ^\".* ]]; then
+            # 维持原始值
+            echo "$line" >> "$TEMP_CRED"
+            continue
+          fi
+        fi
+        
+        # 保留用户实际设置的值（非默认值模式）
+        if [[ ! "$var_value" =~ your_.*_value$ && ! "$var_value" =~ ^"your_ && ${#var_value} -lt 50 ]]; then
+          # 是一个自定义值，保留它
+          # 检查值是否有未闭合的引号
+          if [[ "$var_value" =~ ^\".* && ! "$var_value" =~ .*\"$ ]]; then
+            # 引号未闭合，替换为默认值
+            echo "${var_name}=${var_value}\"" >> "$TEMP_CRED" # 添加缺失的引号
+            echo -e "${YELLOW}警告: 变量 $var_name 包含未闭合的引号，已添加结束引号${NC}" >&2
+          else
+            echo "$line" >> "$TEMP_CRED"
+          fi
+          continue
+        fi
+        
         # 检查值是否有未闭合的引号
         if [[ "$var_value" =~ ^\".* && ! "$var_value" =~ .*\"$ ]]; then
           # 引号未闭合，替换为默认值
@@ -355,7 +380,7 @@ setup_credentials() {
         fi
         
         # 如果值很长或包含特殊字符，可能是损坏的 - 替换为安全默认值
-        if [[ ${#var_value} -gt 200 || "$var_value" =~ [\n\r] ]]; then
+        if [[ ${#var_value} -gt 100 || "$var_value" =~ [\n\r] ]]; then
           echo "${var_name}=your_${var_name,,}_value" >> "$TEMP_CRED"
           echo -e "${YELLOW}警告: 变量 $var_name 包含异常值，已重置为默认值${NC}" >&2
         else
