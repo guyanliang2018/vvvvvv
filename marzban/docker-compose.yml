@@ -6,9 +6,7 @@ services:
     restart: always
     env_file:
       - ./env
-    ports:
-      - "4443:443"  # 修改为4443端口，避免与系统其他服务冲突
-      - "8080:80"  # 修改为8080端口，避免与系统其他服务冲突
+    # 通过Caddy代理访问，无需直接映射端口
     volumes:
       - ./data:/var/lib/marzban
       - ./certs:/var/lib/marzban/certs
@@ -39,8 +37,7 @@ services:
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--web.enable-lifecycle'
-    ports:
-      - "9090:9090"
+    # 无需直接映射端口，通过Caddy代理访问
     networks:
       - marzban-network
 
@@ -49,6 +46,7 @@ services:
     restart: always
     volumes:
       - ./grafana:/var/lib/grafana
+    # 无需直接映射端口，通过Caddy代理访问
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=secure_password
@@ -67,21 +65,20 @@ services:
     command:
       - '--config.file=/etc/alertmanager/config.yml'
       - '--storage.path=/alertmanager'
-    ports:
-      - "9093:9093"
     networks:
       - marzban-network
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2
     restart: always
     ports:
       - "80:80"
-      - "443:443"
+      - "443:443"  # 标准HTTPS端口
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - ./caddy-data:/data
       - ./caddy-config:/config
+      - ./certs:/certs  # 添加证书目录
     networks:
       - marzban-network
 

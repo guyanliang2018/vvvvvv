@@ -417,8 +417,8 @@ MYSQL_PASSWORD=$MYSQL_PASSWORD
 MYSQL_DATABASE=marzban
 MYSQL_ROOT_PASSWORD=$(openssl rand -base64 12)
 
-# TLS设置
-XRAY_SUBSCRIPTION_URL_PREFIX=https://panel.$BASE_DOMAIN
+# TLS设置 - 使用虚拟目录
+XRAY_SUBSCRIPTION_URL_PREFIX=https://$BASE_DOMAIN/panel
 
 # API和节点设置
 API_ENDPOINT=0.0.0.0:8000
@@ -450,11 +450,64 @@ MYSQL_PASSWORD=$MYSQL_PASSWORD
 EOF
   fi
 
-  # 更新Caddy配置
-  if [ -f "$SCRIPT_DIR/marzban/Caddyfile" ]; then
-    sed -i "s|panel.your-domain.com:4443|panel.$BASE_DOMAIN:4443|g" "$SCRIPT_DIR/marzban/Caddyfile"
-    sed -i "s|monitor.your-domain.com|monitor.$BASE_DOMAIN|g" "$SCRIPT_DIR/marzban/Caddyfile"
-  fi
+  # 创建新的Caddy配置，使用虚拟目录
+  cat > "$SCRIPT_DIR/marzban/Caddyfile" << EOF
+$BASE_DOMAIN {
+    tls {
+        protocols tls1.2 tls1.3
+    }
+    
+    # 主页重定向到面板
+    redir / /panel
+    
+    # Marzban面板
+    route /panel* {
+        uri strip_prefix /panel
+        reverse_proxy marzban:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+    
+    # 监控面板
+    route /monitor* {
+        # Grafana
+        route /monitor/grafana* {
+            uri strip_prefix /monitor/grafana
+            reverse_proxy grafana:3000
+        }
+        
+        # Prometheus
+        route /monitor/prometheus* {
+            uri strip_prefix /monitor/prometheus
+            reverse_proxy prometheus:9090
+        }
+        
+        # Alertmanager
+        route /monitor/alertmanager* {
+            uri strip_prefix /monitor/alertmanager
+            reverse_proxy alertmanager:9093
+        }
+        
+        # 基本认证
+        basicauth /* {
+            admin JDJhJDEwJEVCNmdGMUVqd2RQQ2RzYlFVSkFPenVjeGguYmI3WE9HYndtVkx6OHdpWVZjN3dOZnVaUlZX
+        }
+    }
+    
+    # Netmaker控制台
+    route /netmaker* {
+        uri strip_prefix /netmaker
+        reverse_proxy netmaker-caddy:80
+    }
+    
+    log {
+        output file /var/log/caddy/access.log
+    }
+}
+EOF
   
   # 创建必要的目录
   mkdir -p "$SCRIPT_DIR/marzban/data" "$SCRIPT_DIR/marzban/certs" "$SCRIPT_DIR/marzban/mysql" "$SCRIPT_DIR/marzban/caddy-data" "$SCRIPT_DIR/marzban/caddy-config" "$SCRIPT_DIR/marzban/prometheus/rules" "$SCRIPT_DIR/marzban/prometheus-data" "$SCRIPT_DIR/marzban/grafana" "$SCRIPT_DIR/marzban/alertmanager"
@@ -486,25 +539,25 @@ EOF
     
     if [ "$MARZBAN_RUNNING" -gt 0 ]; then
       echo -e "${GREEN}Marzban容器正在运行${NC}"
-      PANEL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -k https://panel.$BASE_DOMAIN:4443 2>/dev/null || echo "000")
+      PANEL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -k https://$BASE_DOMAIN/panel 2>/dev/null || echo "000")
       
       if [ "$PANEL_STATUS" == "200" ] || [ "$PANEL_STATUS" == "301" ] || [ "$PANEL_STATUS" == "302" ]; then
-        echo -e "${GREEN}Marzban面板已成功启动，可以通过 https://panel.$BASE_DOMAIN:4443 访问${NC}"
+        echo -e "${GREEN}Marzban面板已成功启动，可以通过 https://$BASE_DOMAIN/panel 访问${NC}"
         echo -e "${GREEN}登录凭证: 用户名 admin 密码 $ADMIN_PASSWORD${NC}"
       else
         echo -e "${YELLOW}Marzban面板返回状态码: $PANEL_STATUS${NC}"
-        echo -e "${YELLOW}请手动测试面板URL: https://panel.$BASE_DOMAIN:4443${NC}"
+        echo -e "${YELLOW}请手动测试面板URL: https://$BASE_DOMAIN/panel${NC}"
         echo -e "${YELLOW}如果无法访问，请检查DNS解析和防火墙设置${NC}"
         
         # 尝试添加本地hosts文件解析仅用于服务器测试
         SERVER_IP=$(hostname -I | awk '{print $1}')
-        echo -e "${YELLOW}添加本地hosts文件解析仅用于测试: $SERVER_IP panel.$BASE_DOMAIN${NC}"
-        echo "$SERVER_IP panel.$BASE_DOMAIN" >> /etc/hosts
+        echo -e "${YELLOW}添加本地hosts文件解析仅用于测试: $SERVER_IP $BASE_DOMAIN${NC}"
+        echo "$SERVER_IP $BASE_DOMAIN" >> /etc/hosts
       fi
     else
       echo -e "${RED}Marzban容器启动失败，请检查日志:${NC}"
       docker-compose logs marzban
-      echo -e "${YELLOW}面板URL: https://panel.$BASE_DOMAIN:4443${NC}"
+      echo -e "${YELLOW}面板URL: https://$BASE_DOMAIN/panel${NC}"
       echo -e "${YELLOW}如需手动排查，请运行: diagnostics.sh 脚本${NC}"
     fi
   fi
