@@ -495,23 +495,107 @@ setup_netmaker() {
   
   cd "$SCRIPT_DIR/netmaker"
 
-  # 端口冲突检测和处理函数
+  # 强化的Docker资源清理函数
+  clean_docker_resources() {
+    echo -e "${YELLOW}执行强化的Docker资源清理...${NC}"
+    
+    # 停止并移除所有Docker容器
+    docker stop $(docker ps -aq) 2>/dev/null || true
+    docker rm -f $(docker ps -aq) 2>/dev/null || true
+    
+    # 强制清理所有Docker资源
+    echo -e "${YELLOW}清理Docker缓存与未使用的资源...${NC}"
+    docker system prune -af --volumes 2>/dev/null || true
+  }
+  
+  # 增强的端口冲突检测和处理函数
   check_port() {
     local port=$1
     local result=$(lsof -i:$port -t 2>/dev/null)
     if [ -n "$result" ]; then
       echo -e "${YELLOW}端口 $port 已被占用，尝试关闭相关进程...${NC}"
       kill -9 $result 2>/dev/null || true
+      
+      # 二次检查，如果仍被占用，尝试使用sudo
+      sleep 1
+      result=$(lsof -i:$port -t 2>/dev/null)
+      if [ -n "$result" ]; then
+        echo -e "${RED}端口 $port 仍被占用，尝试使用sudo强制关闭...${NC}"
+        sudo kill -9 $result 2>/dev/null || true
+      fi
+      
       return 1
     fi
     return 0
   }
   
+  # 首先运行强化清理
+  clean_docker_resources
+  
   # 检查并清理Netmaker相关端口
-  echo -e "${YELLOW}检查关键端口是否可用...${NC}"
-  for port in 8095 3485 8884 51821 53; do
+  echo -e "${YELLOW}强制检查关键端口是否可用...${NC}"
+  CRITICAL_PORTS="8095 3485 8884 51821 53"
+  echo -e "${BLUE}关键端口列表: $CRITICAL_PORTS${NC}"
+  
+  for port in $CRITICAL_PORTS; do
     check_port $port
+    # 如果端口仍然被占用，继续下一个端口
   done
+  
+  # 根因分析函数，帮助诊断端口冲突问题
+  diagnose_port_issue() {
+    local port=$1
+    echo -e "${YELLOW}===== 开始端口 $port 问题诊断 =====${NC}"
+    
+    # 检查端口状态
+    echo -e "${BLUE}1. 检查端口 $port 当前状态...${NC}"
+    if command -v netstat &> /dev/null; then
+      netstat -tulpn 2>/dev/null | grep -E ":$port "
+    elif command -v ss &> /dev/null; then
+      ss -tulpn 2>/dev/null | grep -E ":$port "
+    else
+      echo -e "${RED}无法检查端口状态，netstat和ss命令均不可用${NC}"
+    fi
+    
+    # 检查占用该端口的进程
+    echo -e "${BLUE}2. 检查占用端口 $port 的进程...${NC}"
+    PID=$(lsof -i:$port -t 2>/dev/null)
+    if [ -n "$PID" ]; then
+      echo -e "${YELLOW}发现进程 ID: $PID${NC}"
+      ps -f -p $PID 2>/dev/null || ps aux | grep $PID | grep -v grep
+    else
+      echo -e "${GREEN}没有进程占用该端口${NC}"
+    fi
+    
+    # 检查Docker容器是否使用该端口
+    echo -e "${BLUE}3. 检查Docker容器是否使用端口 $port...${NC}"
+    docker ps --format "{{.Names}}\t{{.Ports}}" 2>/dev/null | grep -E "$port-|:$port" || echo -e "${GREEN}没有Docker容器使用该端口${NC}"
+    
+    echo -e "${YELLOW}===== 端口诊断完成 =====${NC}"
+  }
+  
+  # 执行全面的端口诊断
+  run_ports_diagnosis() {
+    echo -e "${YELLOW}\n===== 执行全面端口诊断 =====${NC}"
+    for port in $CRITICAL_PORTS; do
+      if lsof -i:$port -t &>/dev/null; then
+        diagnose_port_issue $port
+      fi
+    done
+    
+    # 使用netstat显示当前关键端口状态
+    echo -e "${YELLOW}\n当前端口状态概要:${NC}"
+    if command -v netstat &> /dev/null; then
+      netstat -tulpn 2>/dev/null | grep -E "$(echo $CRITICAL_PORTS | tr ' ' '|')" || echo -e "${GREEN}没有关键端口被占用${NC}"
+    elif command -v ss &> /dev/null; then
+      ss -tulpn 2>/dev/null | grep -E "$(echo $CRITICAL_PORTS | tr ' ' '|')" || echo -e "${GREEN}没有关键端口被占用${NC}"
+    fi
+    
+    echo -e "${YELLOW}===== 诊断完成 =====${NC}\n"
+  }
+  
+  # 执行端口诊断
+  run_ports_diagnosis
   
   # 强制清理现有Netmaker容器和相关资源
   echo -e "${YELLOW}清理已存在的Netmaker容器和相关资源...${NC}"
