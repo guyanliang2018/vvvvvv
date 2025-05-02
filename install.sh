@@ -232,14 +232,67 @@ install_dependencies() {
   # 安装Terraform和Ansible
   echo -e "${BLUE}安装Terraform...${NC}"
   if ! command -v terraform &> /dev/null; then
-    wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg
-    echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/hashicorp.list
-    apt update -y
-    apt install -y terraform
+    echo -e "${BLUE}尝试方法 1: 使用官方仓库安装Terraform${NC}"
+    if curl -4s --connect-timeout 10 https://apt.releases.hashicorp.com/gpg > /dev/null; then
+      # 使用IPv4强制连接
+      curl -4s https://apt.releases.hashicorp.com/gpg | gpg --dearmor | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
+      echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/hashicorp.list
+      apt update -y
+      apt install -y terraform
+    else
+      echo -e "${YELLOW}官方仓库无法访问，尝试备选方法${NC}"
+      # 备选方1: 直接下载Terraform二进制文件
+      TF_VERSION="1.5.7"
+      TF_ARCH="amd64"
+      
+      if [ "$(uname -m)" = "aarch64" ]; then
+        TF_ARCH="arm64"
+      fi
+      
+      echo -e "${BLUE}尝试方法 2: 直接下载Terraform $TF_VERSION $TF_ARCH 二进制文件${NC}"
+      if curl -4s --connect-timeout 10 https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_${TF_ARCH}.zip -o /tmp/terraform.zip; then
+        apt install -y unzip
+        unzip -o /tmp/terraform.zip -d /tmp
+        mv /tmp/terraform /usr/local/bin/
+        chmod +x /usr/local/bin/terraform
+        rm /tmp/terraform.zip
+        echo -e "${GREEN}Terraform已安装到/usr/local/bin/terraform${NC}"
+      else
+        echo -e "${YELLOW}直接下载也失败，您可能需要手动安装Terraform${NC}"
+        echo -e "${YELLOW}请访问 https://developer.hashicorp.com/terraform/downloads 下载并安装${NC}"
+        read -p "是否继续安装脏除Terraform外的其他组件? (y/n) [默认:y] " continue_without_tf
+        if [[ "$continue_without_tf" =~ ^[Nn]$ ]]; then
+          echo -e "${RED}安装中止${NC}"
+          exit 1
+        fi
+      fi
+    fi
+  else
+    echo -e "${GREEN}Terraform已安装${NC}"
   fi
   
   echo -e "${BLUE}安装Ansible...${NC}"
-  pip3 install ansible
+  if ! command -v ansible &> /dev/null; then
+    echo -e "${BLUE}尝试方法 1: 使用pip安装Ansible${NC}"
+    if pip3 install ansible --timeout 30; then
+      echo -e "${GREEN}Ansible已通过pip安装${NC}"
+    else
+      echo -e "${YELLOW}pip安装失败，尝试备选方法${NC}"
+      
+      # 备选方1: 使用系统包管理器
+      echo -e "${BLUE}尝试方法 2: 使用系统包管理器安装Ansible${NC}"
+      if [[ "$OS" == "ubuntu" || "$OS" == "debian" ]]; then
+        apt install -y ansible
+      elif [[ "$OS" == "centos" || "$OS" == "rhel" || "$OS" == "fedora" ]]; then
+        yum install -y epel-release
+        yum install -y ansible
+      else
+        echo -e "${YELLOW}无法为当前系统安装Ansible，将跳过${NC}"
+      fi
+    fi
+  else
+    echo -e "${GREEN}Ansible已安装${NC}"
+  fi
   
   echo -e "${GREEN}依赖安装完成${NC}"
 }
