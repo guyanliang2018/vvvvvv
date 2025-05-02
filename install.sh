@@ -489,69 +489,80 @@ EOF
 setup_netmaker() {
   echo -e "${BLUE}[4/6] 设置Netmaker网络控制器...${NC}"
   
-  # 创建必要的目录
-  mkdir -p "$SCRIPT_DIR/netmaker/data" "$SCRIPT_DIR/netmaker/config" "$SCRIPT_DIR/netmaker/certs" "$SCRIPT_DIR/netmaker/caddy-data" "$SCRIPT_DIR/netmaker/caddy-config"
-  
-  # 更新Caddy配置
-  if [ -f "$SCRIPT_DIR/netmaker/Caddyfile" ]; then
-    sed -i "s|netmaker.your-domain.com|netmaker.$BASE_DOMAIN|g" "$SCRIPT_DIR/netmaker/Caddyfile"
-    sed -i "s|api.netmaker.your-domain.com|api.netmaker.$BASE_DOMAIN|g" "$SCRIPT_DIR/netmaker/Caddyfile"
+  if [ ! -d "$SCRIPT_DIR/netmaker" ]; then
+    mkdir -p "$SCRIPT_DIR/netmaker"
   fi
   
-  # 更新docker-compose配置
-  if [ -f "$SCRIPT_DIR/netmaker/docker-compose.yml" ]; then
-    sed -i "s|netmaker.your-domain.com|netmaker.$BASE_DOMAIN|g" "$SCRIPT_DIR/netmaker/docker-compose.yml"
-    sed -i "s|api.netmaker.your-domain.com|api.netmaker.$BASE_DOMAIN|g" "$SCRIPT_DIR/netmaker/docker-compose.yml"
-    sed -i "s|your-secure-master-key|$(openssl rand -hex 16)|g" "$SCRIPT_DIR/netmaker/docker-compose.yml"
-    sed -i "s|user:pass123|admin:$ADMIN_PASSWORD|g" "$SCRIPT_DIR/netmaker/docker-compose.yml"
+  cd "$SCRIPT_DIR/netmaker"
+
+  # 强制清理现有Netmaker容器和相关资源
+  echo -e "${YELLOW}清理已存在的Netmaker容器和相关资源...${NC}"
+  docker rm -f netmaker netmaker-caddy 2>/dev/null || true
+  docker system prune -f 2>/dev/null || true
+  docker volume prune -f 2>/dev/null || true
+  
+  # 完全移除数据目录重新建立，解决数据损坏问题
+  rm -rf "$SCRIPT_DIR/netmaker/data" "$SCRIPT_DIR/netmaker/config" "$SCRIPT_DIR/netmaker/certs"
+  
+  # 创建必要的目录结构
+  mkdir -p "$SCRIPT_DIR/netmaker/data"
+  mkdir -p "$SCRIPT_DIR/netmaker/config"
+  mkdir -p "$SCRIPT_DIR/netmaker/certs"
+  
+  # 设置正确的目录权限
+  chmod -R 755 "$SCRIPT_DIR/netmaker"
+  
+  # 替换配置文件中的参数
+  sed -i "s/SERVER_HOST: \"netmaker\.your-domain\.com\"/SERVER_HOST: \"netmaker\.$BASE_DOMAIN\"/g" docker-compose.yml
+  sed -i "s/SERVER_API_CONN_STRING: \"api\.netmaker\.your-domain\.com:5443\"/SERVER_API_CONN_STRING: \"api\.netmaker\.$BASE_DOMAIN:5443\"/g" docker-compose.yml
+  sed -i "s/MASTER_KEY: \"your-secure-master-key\"/MASTER_KEY: \"$MASTER_KEY\"/g" docker-compose.yml
+
+  echo -e "${YELLOW}启动Netmaker网络控制器...${NC}"
+  # 先尝试拉取最新镜像，避免缓存问题
+  docker pull gravitl/netmaker:v0.20.2
+  docker pull caddy:2-alpine
+  # 使用--force-recreate来确保容器完全重新创建
+  docker-compose up -d --force-recreate
+  
+  # 等待服务启动
+  echo -e "${YELLOW}等待Netmaker启动...${NC}"
+  sleep 15
+  
+  # 获取访问令牌 - 使用正确的API方式获取
+  echo -e "${YELLOW}尝试获取Netmaker接入令牌...${NC}"
+  
+  # 尝试三种不同的方法来获取令牌
+  # 方法1: 通过API获取
+  NETMAKER_TOKEN=$(curl -s -X GET -H "Authorization: Bearer $MASTER_KEY" http://localhost:8089/api/networks/vpn/keys/token 2>/dev/null | grep -o '"token":"[^"]*"' | cut -d '"' -f 4 || echo "")
+  
+  # 方法2: 直接从容器中获取
+  if [ -z "$NETMAKER_TOKEN" ]; then
+    NETMAKER_TOKEN=$(docker exec netmaker sh -c "cd /root && ./netmaker enrollment-key -t vpn" 2>/dev/null || echo "")
   fi
   
-  # 启动Netmaker
-  if [ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "panel" ]; then
-    echo -e "${BLUE}启动Netmaker网络控制器...${NC}"
-    cd "$SCRIPT_DIR/netmaker"
-    docker-compose up -d
-    
-    # 等待服务启动
-    echo -e "${YELLOW}等待Netmaker启动...${NC}"
-    sleep 15
-    
-    # 获取访问令牌 - 使用正确的API方式获取
-    echo -e "${YELLOW}尝试获取Netmaker接入令牌...${NC}"
-    
-    # 尝试三种不同的方法来获取令牌
-    # 方法1: 通过API获取
-    NETMAKER_TOKEN=$(curl -s -X GET -H "Authorization: Bearer $MASTER_KEY" http://localhost:8081/api/networks/vpn/keys/token 2>/dev/null | grep -o '"token":"[^"]*"' | cut -d '"' -f 4 || echo "")
-    
-    # 方法2: 直接从容器中获取
-    if [ -z "$NETMAKER_TOKEN" ]; then
-      NETMAKER_TOKEN=$(docker exec netmaker sh -c "cd /root && ./netmaker enrollment-key -t vpn" 2>/dev/null || echo "")
-    fi
-    
-    # 方法3: 使用默认令牌
-    if [ -z "$NETMAKER_TOKEN" ]; then
-      # 如果以上方法都失败，使用默认生成的令牌格式
-      NETMAKER_TOKEN="请登录网络控制面板获取令牌"
-    fi
-    
-    # 显示结果
-    echo -e "${GREEN}Netmaker网络控制器已成功启动${NC}"
-    echo -e "${GREEN}访问地址: https://netmaker.$BASE_DOMAIN:5443${NC}"
-    echo -e "${BLUE}管理面板登录信息:${NC}"
-    echo -e "${BLUE}  - 用户名: admin@netmaker.io${NC}"
-    echo -e "${BLUE}  - 密码: 请使用MASTER_KEY($MASTER_KEY)${NC}"
-    
-    # 显示Netmaker令牌信息
-    if [ "$NETMAKER_TOKEN" != "请登录网络控制面板获取令牌" ]; then
-      echo -e "${GREEN}Netmaker接入令牌: $NETMAKER_TOKEN${NC}"
-      # 更新凭证文件 - 更安全的替换方式
-      TOKEN_ESCAPED=$(printf '%s\n' "$NETMAKER_TOKEN" | sed -e 's/[\/&]/\\&/g')
-      sed -i "s/your_netmaker_join_token/$TOKEN_ESCAPED/g" "$SCRIPT_DIR/credentials.env"
-    else
-      echo -e "${YELLOW}无法自动获取令牌，请登录控制面板手动生成${NC}"
-      # 将占位符保留在凭证文件中，等待手动更新
-      echo -e "${YELLOW}凭证文件中的Netmaker令牌将需要手动更新${NC}"
-    fi
+  # 方法3: 使用默认令牌
+  if [ -z "$NETMAKER_TOKEN" ]; then
+    # 如果以上方法都失败，使用默认生成的令牌格式
+    NETMAKER_TOKEN="请登录网络控制面板获取令牌"
+  fi
+  
+  # 显示结果
+  echo -e "${GREEN}Netmaker网络控制器已成功启动${NC}"
+  echo -e "${GREEN}访问地址: https://netmaker.$BASE_DOMAIN:5443${NC}"
+  echo -e "${BLUE}管理面板登录信息:${NC}"
+  echo -e "${BLUE}  - 用户名: admin@netmaker.io${NC}"
+  echo -e "${BLUE}  - 密码: 请使用MASTER_KEY($MASTER_KEY)${NC}"
+  
+  # 显示Netmaker令牌信息
+  if [ "$NETMAKER_TOKEN" != "请登录网络控制面板获取令牌" ]; then
+    echo -e "${GREEN}Netmaker接入令牌: $NETMAKER_TOKEN${NC}"
+    # 更新凭证文件 - 更安全的替换方式
+    TOKEN_ESCAPED=$(printf '%s\n' "$NETMAKER_TOKEN" | sed -e 's/[\/&]/\\&/g')
+    sed -i "s/your_netmaker_join_token/$TOKEN_ESCAPED/g" "$SCRIPT_DIR/credentials.env"
+  else
+    echo -e "${YELLOW}无法自动获取令牌，请登录控制面板手动生成${NC}"
+    # 将占位符保留在凭证文件中，等待手动更新
+    echo -e "${YELLOW}凭证文件中的Netmaker令牌将需要手动更新${NC}"
   fi
 }
 
