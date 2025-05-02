@@ -127,6 +127,41 @@ echo -e "${CYAN}关键端口监听状态:${NC}"
 PORTS_TCP=(4443 8080 5443 8095 8884)
 PORTS_UDP=(3485 51821)
 
+# 获取端口对应的服务名称的辅助函数
+get_service_by_port() {
+    local PORT=$1
+    local SERVICE=""
+    
+    case $PORT in
+        4443)
+            SERVICE="Marzban HTTPS"
+            ;;
+        8080)
+            SERVICE="Marzban HTTP"
+            ;;
+        5443)
+            SERVICE="Netmaker HTTPS"
+            ;;
+        8095)
+            SERVICE="Netmaker API"
+            ;;
+        8884)
+            SERVICE="Netmaker MQTT"
+            ;;
+        3485)
+            SERVICE="Netmaker STUN (UDP)"
+            ;;
+        51821)
+            SERVICE="WireGuard (UDP)"
+            ;;
+        *)
+            SERVICE="未知服务"
+            ;;
+    esac
+    
+    echo $SERVICE
+}
+
 # 检查TCP端口
 echo -e "\n${CYAN}TCP端口状态:${NC}"
 for PORT in "${PORTS_TCP[@]}"; do
@@ -166,41 +201,6 @@ for PORT in "${PORTS_UDP[@]}"; do
         echo -e "[${RED}✗${NC}] UDP端口 $PORT 未在监听"
     fi
 done
-
-# 获取端口对应的服务名称的辅助函数
-get_service_by_port() {
-    local PORT=$1
-    local SERVICE=""
-    
-    case $PORT in
-        4443)
-            SERVICE="Marzban HTTPS"
-            ;;
-        8080)
-            SERVICE="Marzban HTTP"
-            ;;
-        5443)
-            SERVICE="Netmaker HTTPS"
-            ;;
-        8095)
-            SERVICE="Netmaker API"
-            ;;
-        8884)
-            SERVICE="Netmaker MQTT"
-            ;;
-        3485)
-            SERVICE="Netmaker STUN (UDP)"
-            ;;
-        51821)
-            SERVICE="WireGuard (UDP)"
-            ;;
-        *)
-            SERVICE="未知服务"
-            ;;
-    esac
-    
-    echo $SERVICE
-}
 
 # 检查防火墙状态
 print_section "防火墙检查"
