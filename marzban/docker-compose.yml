@@ -7,7 +7,7 @@ services:
     env_file:
       - ./env
     ports:
-      - "443:443"
+      - "4443:443"  # 修改为4443端口，避免与系统其他服务冲突
       - "80:80"
     volumes:
       - ./data:/var/lib/marzban
