@@ -390,6 +390,12 @@ EOF
     echo -e "${GREEN}credentials.env文件已修复，原文件备份为credentials.env.bak${NC}"
   fi
   
+  # 加载凭证文件到环境变量
+  if [ -f "$SCRIPT_DIR/credentials.env" ]; then
+    echo -e "${GREEN}加载已存在的凭证文件${NC}"
+    source "$SCRIPT_DIR/credentials.env"
+  fi
+  
   # 生成随机密码
   MYSQL_PASSWORD=$(openssl rand -base64 12)
   API_KEY="api-$(openssl rand -hex 16)"
