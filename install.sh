@@ -11,6 +11,20 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # 无颜色
 
+# 自动拉取最新代码
+echo -e "${BLUE}====== 多云VPS自动化系统安装向导 ======${NC}"
+echo -e "${YELLOW}正在检查最新代码...${NC}"
+
+CUR_DIR=$(pwd)
+REPO_URL="https://github.com/guyanliang2018/vvvvvv.git"
+
+# 如果当前目录是git仓库，则直接拉取最新代码
+if [ -d ".git" ]; then
+  echo -e "${GREEN}检测到现有git仓库，正在拉取最新代码...${NC}"
+  git pull origin main
+  echo -e "${GREEN}最新代码拉取完成!${NC}"
+fi
+
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 BASE_DOMAIN=""
@@ -303,7 +317,19 @@ setup_credentials() {
   
   # 生成随机密码
   MYSQL_PASSWORD=$(openssl rand -base64 12)
-  API_KEY=$(openssl rand -hex 16)
+  API_KEY="api-$(openssl rand -hex 16)"
+  
+  # 创建.env文件
+  echo -e "${GREEN}创建环境变量文件(.env)...${NC}"
+  cat > "$SCRIPT_DIR/.env" << EOF
+# 基本设置
+BASE_DOMAIN=$BASE_DOMAIN
+ADMIN_PASSWORD=$ADMIN_PASSWORD
+API_KEY=$API_KEY
+MYSQL_PASSWORD=$MYSQL_PASSWORD
+EOF
+  
+  echo -e "${GREEN}.env文件创建成功!${NC}"
   
   # 交互式询问云服务商凭证
   if [ "$INSTALL_MODE" == "full" ] && [ "$SILENT" != true ]; then
