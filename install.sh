@@ -56,16 +56,52 @@ for i in "$@"; do
   esac
 done
 
-# 检查必要参数
+# 交互式选择安装模式
+if [ -z "$INSTALL_MODE" ]; then
+  echo -e "${BLUE}请选择安装模式:${NC}"
+  echo "1) full  - 完整安装 (包括面板、网络和Terraform配置)"
+  echo "2) panel - 仅安装控制面板"
+  echo "3) agent - 仅安装节点代理"
+  read -p "请选择 [1-3] (默认: 1): " mode_choice
+  case $mode_choice in
+    2) INSTALL_MODE="panel" ;;
+    3) INSTALL_MODE="agent" ;;
+    *) INSTALL_MODE="full" ;;
+  esac
+  echo -e "${GREEN}已选择: $INSTALL_MODE 模式${NC}"
+  echo
+fi
+
+# 交互式询问必要参数
 if [ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "panel" ]; then
   if [ -z "$BASE_DOMAIN" ]; then
-    echo -e "${RED}错误: 必须指定域名 (--domain=your-domain.com)${NC}"
-    exit 1
+    echo -e "${BLUE}请输入您的域名 (例如: example.com)${NC}"
+    read -p "域名: " BASE_DOMAIN
+    while [ -z "$BASE_DOMAIN" ]; do
+      echo -e "${YELLOW}域名不能为空${NC}"
+      read -p "域名: " BASE_DOMAIN
+    done
   fi
   
   if [ -z "$EMAIL" ]; then
-    echo -e "${RED}错误: 必须指定邮箱 (--email=your-email@example.com)${NC}"
-    exit 1
+    echo -e "${BLUE}请输入您的电子邮箱 (用于SSL证书)${NC}"
+    read -p "邮箱: " EMAIL
+    while [ -z "$EMAIL" ]; do
+      echo -e "${YELLOW}邮箱不能为空${NC}"
+      read -p "邮箱: " EMAIL
+    done
+  fi
+  
+  # 询问管理员账户
+  echo -e "${BLUE}设置控制面板管理员账户${NC}"
+  read -p "管理员用户名 [admin]: " ADMIN_USERNAME
+  ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+  
+  read -s -p "管理员密码 [自动生成]: " ADMIN_PASSWORD
+  echo
+  if [ -z "$ADMIN_PASSWORD" ]; then
+    ADMIN_PASSWORD=$(openssl rand -base64 12)
+    echo -e "${GREEN}已生成随机密码${NC}"
   fi
 fi
 
@@ -75,11 +111,65 @@ echo -e "${BLUE}安装模式: $INSTALL_MODE${NC}"
 if [ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "panel" ]; then
   echo -e "${BLUE}域名: $BASE_DOMAIN${NC}"
   echo -e "${BLUE}邮箱: $EMAIL${NC}"
+  echo -e "${BLUE}管理员账户: $ADMIN_USERNAME${NC}"
+  
+  # 显示更多系统信息
+  echo -e "${BLUE}安装组件:${NC}"
+  echo " - Marzban 控制面板: panel.$BASE_DOMAIN"
+  echo " - Netmaker 网络控制器: netmaker.$BASE_DOMAIN"
+  echo " - Prometheus + Grafana 监控系统"
+  echo " - Alertmanager 告警系统"
+fi
+
+# 显示高级设置选项
+if [ "$SILENT" != true ]; then
+  echo -e "\n${BLUE}高级设置:${NC}"
+  read -p "是否配置高级选项? (y/n) [默认:n]: " advanced_settings
+  if [[ "$advanced_settings" =~ ^[Yy]$ ]]; then
+    # TLS设置
+    echo -e "\n${BLUE}SSL/TLS设置:${NC}"
+    echo "1) 自动获取 Let's Encrypt 证书 (默认)"
+    echo "2) 使用现有证书"
+    echo "3) 仅使用HTTP (不推荐)"
+    read -p "请选择 [1-3]: " tls_choice
+    case $tls_choice in
+      2) 
+        TLS_MODE="custom"
+        read -p "证书路径(.crt): " TLS_CERT_PATH
+        read -p "密钥路径(.key): " TLS_KEY_PATH
+        ;;
+      3) 
+        TLS_MODE="disabled"
+        echo -e "${YELLOW}警告: 禁用TLS将影响系统安全性${NC}"
+        ;;
+      *) 
+        TLS_MODE="auto"
+        ;;
+    esac
+    
+    # 代理设置
+    echo -e "\n${BLUE}节点设置:${NC}"
+    read -p "启用下载加速器? (y/n) [默认:y]: " enable_cdn
+    if [[ ! "$enable_cdn" =~ ^[Nn]$ ]]; then
+      CDN_ENABLED=true
+    else
+      CDN_ENABLED=false
+    fi
+    
+    # 通知设置
+    echo -e "\n${BLUE}通知设置:${NC}"
+    read -p "配置Telegram机器人通知? (y/n) [默认:n]: " enable_telegram
+    if [[ "$enable_telegram" =~ ^[Yy]$ ]]; then
+      read -p "Telegram Bot Token: " TELEGRAM_BOT_TOKEN
+      read -p "Telegram Chat ID: " TELEGRAM_CHAT_ID
+    fi
+  fi
 fi
 
 # 用户确认
 if [ "$SILENT" != true ]; then
-  read -p "继续安装? (y/n) " -n 1 -r
+  echo -e "\n${GREEN}准备开始安装${NC}"
+  read -p "确认继续? (y/n) " -n 1 -r
   echo
   if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo -e "${YELLOW}安装已取消${NC}"
@@ -94,6 +184,21 @@ install_dependencies() {
   if [ "$SKIP_DEPS" == true ]; then
     echo -e "${YELLOW}跳过依赖安装${NC}"
     return
+  fi
+  
+  # 交互式询问是否安装依赖
+  if [ "$SILENT" != true ]; then
+    echo -e "${BLUE}即将安装以下依赖项:${NC}"
+    echo "- Docker 和 Docker Compose"
+    echo "- Git, curl, wget, jq"
+    echo "- Terraform 和 Ansible"
+    echo "- Python3 和 pip"
+    read -p "是否继续安装依赖项? (y/n) [默认:y]: " install_deps
+    if [[ "$install_deps" =~ ^[Nn]$ ]]; then
+      echo -e "${YELLOW}跳过依赖安装${NC}"
+      SKIP_DEPS=true
+      return
+    fi
   fi
   
   # 检测操作系统
@@ -141,12 +246,57 @@ install_dependencies() {
 
 # 创建凭证文件
 setup_credentials() {
-  echo -e "${BLUE}[2/6] 设置凭证...${NC}"
+  echo -e "${BLUE}[2/6] 设置系统凭证...${NC}"
   
   # 生成随机密码
   MYSQL_PASSWORD=$(openssl rand -base64 12)
-  ADMIN_PASSWORD=$(openssl rand -base64 12)
   API_KEY=$(openssl rand -hex 16)
+  
+  # 交互式询问云服务商凭证
+  if [ "$INSTALL_MODE" == "full" ] && [ "$SILENT" != true ]; then
+    echo -e "\n${BLUE}云服务商凭证设置 (可选):${NC}"
+    echo "注意: 如果您计划使用多云服务商，可以在安装后修改credentials.env文件"
+    
+    read -p "是否现在配置云服务商API密钥? (y/n) [默认:n]: " setup_cloud_creds
+    if [[ "$setup_cloud_creds" =~ ^[Yy]$ ]]; then
+      echo "支持的云服务商: AWS, DigitalOcean, Vultr, Linode, Hetzner, OVH"
+      read -p "选择云服务商 [默认:AWS]: " CLOUD_PROVIDER
+      CLOUD_PROVIDER=${CLOUD_PROVIDER:-AWS}
+      
+      case "${CLOUD_PROVIDER,,}" in
+        aws) 
+          read -p "AWS Access Key: " AWS_ACCESS_KEY
+          read -s -p "AWS Secret Key: " AWS_SECRET_KEY
+          echo
+          ;;
+        digitalocean) 
+          read -s -p "DigitalOcean API Token: " DO_TOKEN
+          echo
+          ;;
+        vultr) 
+          read -s -p "Vultr API Key: " VULTR_API_KEY
+          echo
+          ;;
+        linode) 
+          read -s -p "Linode API Token: " LINODE_TOKEN
+          echo
+          ;;
+        hetzner) 
+          read -s -p "Hetzner API Token: " HETZNER_TOKEN
+          echo
+          ;;
+        ovh) 
+          read -p "OVH Application Key: " OVH_APP_KEY
+          read -s -p "OVH Application Secret: " OVH_APP_SECRET
+          echo
+          read -p "OVH Consumer Key: " OVH_CONSUMER_KEY
+          ;;
+        *) 
+          echo -e "${YELLOW}不支持的云服务商${NC}"
+          ;;
+      esac
+    fi
+  fi
   
   # 创建credentials.env文件
   if [ ! -f "$SCRIPT_DIR/credentials.env" ]; then
@@ -159,8 +309,29 @@ setup_credentials() {
     sed -i "s|secure_password|$ADMIN_PASSWORD|g" "$SCRIPT_DIR/credentials.env"
     sed -i "s|your_marzban_api_token|$API_KEY|g" "$SCRIPT_DIR/credentials.env"
     
+    # 如果配置了Telegram通知，更新相关配置
+    if [ ! -z "$TELEGRAM_BOT_TOKEN" ]; then
+      sed -i "s|your_telegram_bot_token|$TELEGRAM_BOT_TOKEN|g" "$SCRIPT_DIR/credentials.env"
+      sed -i "s|your_telegram_chat_id|$TELEGRAM_CHAT_ID|g" "$SCRIPT_DIR/credentials.env"
+    fi
+    
+    # 更新云服务商凭证
+    if [ ! -z "$AWS_ACCESS_KEY" ]; then
+      sed -i "s|your_aws_access_key|$AWS_ACCESS_KEY|g" "$SCRIPT_DIR/credentials.env"
+      sed -i "s|your_aws_secret_key|$AWS_SECRET_KEY|g" "$SCRIPT_DIR/credentials.env"
+    fi
+    if [ ! -z "$DO_TOKEN" ]; then
+      sed -i "s|your_digitalocean_token|$DO_TOKEN|g" "$SCRIPT_DIR/credentials.env"
+    fi
+    if [ ! -z "$VULTR_API_KEY" ]; then
+      sed -i "s|your_vultr_api_key|$VULTR_API_KEY|g" "$SCRIPT_DIR/credentials.env"
+    fi
+    # 更新其他云服务商凭证...
+    
     echo -e "${GREEN}凭证文件已创建: $SCRIPT_DIR/credentials.env${NC}"
-    echo -e "${YELLOW}请手动编辑此文件添加您的云服务商API密钥${NC}"
+    if [[ "$setup_cloud_creds" != ^[Yy]$ ]]; then
+      echo -e "${YELLOW}如需添加云服务商API密钥，请手动编辑此文件${NC}"
+    fi
   else
     echo -e "${YELLOW}凭证文件已存在，跳过创建${NC}"
   fi
