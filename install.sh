@@ -691,10 +691,58 @@ setup_netmaker() {
   # 设置正确的目录权限
   chmod -R 755 "$SCRIPT_DIR/netmaker"
   
-  # 替换配置文件中的参数
-  sed -i "s/SERVER_HOST: \"netmaker\.your-domain\.com\"/SERVER_HOST: \"netmaker\.$BASE_DOMAIN\"/g" docker-compose.yml
-  sed -i "s/SERVER_API_CONN_STRING: \"api\.netmaker\.your-domain\.com:5443\"/SERVER_API_CONN_STRING: \"api\.netmaker\.$BASE_DOMAIN:5443\"/g" docker-compose.yml
-  sed -i "s/MASTER_KEY: \"your-secure-master-key\"/MASTER_KEY: \"$MASTER_KEY\"/g" docker-compose.yml
+  # 创建更新的docker-compose.yml，适配虚拟目录结构
+  cat > "$SCRIPT_DIR/netmaker/docker-compose.yml" << EOF
+version: '3.4'
+
+services:
+  netmaker:
+    container_name: netmaker
+    image: gravitl/netmaker:v0.20.2
+    restart: always
+    volumes:
+      - ./data:/root/data
+    environment:
+      SERVER_NAME: "$BASE_DOMAIN"
+      SERVER_API_CONN_STRING: "$BASE_DOMAIN/netmaker/api"
+      DISABLE_REMOTE_UDP_CHECKS: "true"
+      SERVER_HTTP_HOST: "localhost:8095"
+      MASTER_KEY: "$MASTER_KEY"
+      API_PORT: "8095"
+      DATABASE: "sqlite"
+      DNS_MODE: "off"
+      COREDNS_ADDR: "127.0.0.1"
+      MQ_HOST: "netmaker"
+      MQ_PORT: "8884"
+    ports:
+      - "51821:51821/udp"
+      - "8884:8884/tcp"
+      - "8095:8095/tcp"
+      - "53:53/udp"
+      - "3485:3478/udp"
+    cap_add:
+      - NET_ADMIN
+  
+  netmaker-caddy:
+    container_name: netmaker-caddy
+    depends_on:
+      - netmaker
+    image: caddy:latest
+    restart: always
+    command: caddy run --config /etc/caddy/Caddyfile
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy-data:/data
+      - ./caddy-config:/config
+      - ./certs:/certs
+EOF
+
+  # 创建Caddyfile使用HTTP而非HTTPS，通过主域名的Caddy代理访问
+  cat > "$SCRIPT_DIR/netmaker/Caddyfile" << EOF
+:80 {
+    reverse_proxy netmaker:8095
+}
+EOF
 
   echo -e "${YELLOW}启动Netmaker网络控制器...${NC}"
   # 先尝试拉取最新镜像，避免缓存问题
@@ -727,7 +775,7 @@ setup_netmaker() {
   
   # 显示结果
   echo -e "${GREEN}Netmaker网络控制器已成功启动${NC}"
-  echo -e "${GREEN}访问地址: https://netmaker.$BASE_DOMAIN:5443${NC}"
+  echo -e "${GREEN}访问地址: https://$BASE_DOMAIN/netmaker${NC}"
   echo -e "${BLUE}管理面板登录信息:${NC}"
   echo -e "${BLUE}  - 用户名: admin@netmaker.io${NC}"
   echo -e "${BLUE}  - 密码: 请使用MASTER_KEY($MASTER_KEY)${NC}"
@@ -871,8 +919,8 @@ EOF
     cat > "$SCRIPT_DIR/ansible/vars/global.yml" << EOF
 ---
 # 全局变量
-netmaker_server: "netmaker.$BASE_DOMAIN"
-marzban_server: "panel.$BASE_DOMAIN"
+netmaker_server: "$BASE_DOMAIN/netmaker"
+marzban_server: "$BASE_DOMAIN/panel"
 netmaker_token: "$NETMAKER_TOKEN"
 marzban_token: "$API_KEY"
 
