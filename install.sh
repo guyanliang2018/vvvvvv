@@ -474,13 +474,13 @@ EOF
     sleep 10
     
     # 验证面板是否正常工作
-    PANEL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://panel.$BASE_DOMAIN || echo "000")
+    PANEL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://panel.$BASE_DOMAIN:4443 || echo "000")
     if [ "$PANEL_STATUS" == "200" ] || [ "$PANEL_STATUS" == "301" ] || [ "$PANEL_STATUS" == "302" ]; then
-      echo -e "${GREEN}Marzban面板已成功启动，可以通过 https://panel.$BASE_DOMAIN 访问${NC}"
+      echo -e "${GREEN}Marzban面板已成功启动，可以通过 https://panel.$BASE_DOMAIN:4443 访问${NC}"
       echo -e "${GREEN}登录凭证: 用户名 admin 密码 $ADMIN_PASSWORD${NC}"
     else
       echo -e "${YELLOW}Marzban面板可能未正确启动，请检查配置和日志${NC}"
-      echo -e "${YELLOW}面板URL: https://panel.$BASE_DOMAIN${NC}"
+      echo -e "${YELLOW}面板URL: https://panel.$BASE_DOMAIN:4443${NC}"
     fi
   fi
 }
