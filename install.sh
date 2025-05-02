@@ -315,6 +315,46 @@ install_dependencies() {
 setup_credentials() {
   echo -e "${BLUE}[2/6] 设置系统凭证...${NC}"
   
+  # 修复已存在的credentials.env文件
+  if [ -f "$SCRIPT_DIR/credentials.env" ]; then
+    echo -e "${YELLOW}检查credentials.env文件是否有语法错误...${NC}"
+    
+    # 创建备份
+    cp "$SCRIPT_DIR/credentials.env" "$SCRIPT_DIR/credentials.env.bak"
+    
+    # 修复文件 - 删除多行值的问题（特别是NETMAKER_JOIN_TOKEN）
+    echo -e "${YELLOW}修复credentials.env文件...${NC}"
+    
+    # 创建一个临时文件来存储有效的行
+    TEMP_CRED=$(mktemp)
+    
+    # 逐行读取文件并且过滤掉无效的内容
+    while IFS= read -r line || [ -n "$line" ]; do
+      # 保留注释和空行
+      if [[ "$line" =~ ^[[:space:]]*# || -z "$line" ]]; then
+        echo "$line" >> "$TEMP_CRED"
+      # 检查是否是有效的环境变量赋值行（变量名=值格式）
+      elif [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+        # 提取变量名和值
+        var_name="${line%%=*}"
+        var_value="${line#*=}"
+        
+        # 如果值很长或包含特殊字符，可能是损坏的 - 替换为安全默认值
+        if [[ ${#var_value} -gt 200 || "$var_value" =~ [\n\r] ]]; then
+          echo "${var_name}=your_${var_name,,}_value" >> "$TEMP_CRED"
+          echo -e "${YELLOW}警告: 变量 $var_name 包含异常值，已重置为默认值${NC}" >&2
+        else
+          echo "$line" >> "$TEMP_CRED"
+        fi
+      fi
+    done < "$SCRIPT_DIR/credentials.env"
+    
+    # 替换原始文件
+    mv "$TEMP_CRED" "$SCRIPT_DIR/credentials.env"
+    chmod 600 "$SCRIPT_DIR/credentials.env"
+    echo -e "${GREEN}credentials.env文件已修复，原文件备份为credentials.env.bak${NC}"
+  fi
+  
   # 生成随机密码
   MYSQL_PASSWORD=$(openssl rand -base64 12)
   API_KEY="api-$(openssl rand -hex 16)"
