@@ -542,6 +542,72 @@ EOF
   cp "$SCRIPT_DIR/marzban/data/xray_config.json" "$SCRIPT_DIR/marzban/data/" 2>/dev/null || true
   cp "$SCRIPT_DIR/marzban/data/inbounds_template.json" "$SCRIPT_DIR/marzban/data/" 2>/dev/null || true
   
+  # 创建Prometheus配置文件
+  if [ ! -f "$SCRIPT_DIR/marzban/prometheus/prometheus.yml" ]; then
+    cat > "$SCRIPT_DIR/marzban/prometheus/prometheus.yml" << EOF
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+      - alertmanager:9093
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+    - targets: ['localhost:9090']
+EOF
+  fi
+  
+  # 创建 Alertmanager 配置文件
+  if [ ! -f "$SCRIPT_DIR/marzban/alertmanager/config.yml" ]; then
+    cat > "$SCRIPT_DIR/marzban/alertmanager/config.yml" << EOF
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 1h
+  receiver: 'web.hook'
+
+receivers:
+- name: 'web.hook'
+  webhook_configs:
+  - url: 'http://127.0.0.1:5001/'
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'dev', 'instance']
+EOF
+  fi
+  
+  # 设置正确的目录权限
+  echo -e "${YELLOW}设置目录权限...${NC}"
+  # 在服务器上使用sudo，在本地环境可能需要去掉sudo
+  if command -v sudo &> /dev/null; then
+    sudo chown -R 1000:1000 "$SCRIPT_DIR/marzban/grafana" || true
+    sudo chown -R 1000:1000 "$SCRIPT_DIR/marzban/prometheus" || true
+    sudo chown -R 1000:1000 "$SCRIPT_DIR/marzban/prometheus-data" || true
+    sudo chown -R 1000:1000 "$SCRIPT_DIR/marzban/alertmanager" || true
+  else
+    chown -R 1000:1000 "$SCRIPT_DIR/marzban/grafana" || true
+    chown -R 1000:1000 "$SCRIPT_DIR/marzban/prometheus" || true
+    chown -R 1000:1000 "$SCRIPT_DIR/marzban/prometheus-data" || true
+    chown -R 1000:1000 "$SCRIPT_DIR/marzban/alertmanager" || true
+  fi
+  
   # 启动Marzban面板
   if [ "$INSTALL_MODE" == "full" ] || [ "$INSTALL_MODE" == "panel" ]; then
     echo -e "${BLUE}启动Marzban面板...${NC}"
