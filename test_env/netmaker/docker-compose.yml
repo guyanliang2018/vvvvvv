@@ -47,8 +47,8 @@ services:
     depends_on:
       - netmaker
     ports:
-      - "80:80"
-      - "443:443"
+      - "8081:80"  # 修改为8081端口，避免与系统其他服务冲突
+      - "5443:443"  # 修改为5443端口，避免与系统其他服务冲突
     networks:
       - netmaker-network
     volumes:
