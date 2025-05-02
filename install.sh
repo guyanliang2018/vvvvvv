@@ -339,6 +339,21 @@ setup_credentials() {
         var_name="${line%%=*}"
         var_value="${line#*=}"
         
+        # 特别处理NETMAKER_JOIN_TOKEN变量
+        if [[ "$var_name" == "NETMAKER_JOIN_TOKEN" ]]; then
+          echo "${var_name}=your_netmaker_join_token_value" >> "$TEMP_CRED"
+          echo -e "${YELLOW}警告: NETMAKER_JOIN_TOKEN 变量已重置为默认值${NC}" >&2
+          continue
+        fi
+        
+        # 检查值是否有未闭合的引号
+        if [[ "$var_value" =~ ^\".* && ! "$var_value" =~ .*\"$ ]]; then
+          # 引号未闭合，替换为默认值
+          echo "${var_name}=your_${var_name,,}_value" >> "$TEMP_CRED"
+          echo -e "${YELLOW}警告: 变量 $var_name 包含未闭合的引号，已重置为默认值${NC}" >&2
+          continue
+        fi
+        
         # 如果值很长或包含特殊字符，可能是损坏的 - 替换为安全默认值
         if [[ ${#var_value} -gt 200 || "$var_value" =~ [\n\r] ]]; then
           echo "${var_name}=your_${var_name,,}_value" >> "$TEMP_CRED"
