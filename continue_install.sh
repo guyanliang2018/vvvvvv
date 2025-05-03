@@ -198,36 +198,35 @@ if [ -d "$SCRIPT_DIR/marzban/caddy-config" ]; then
   chmod -R 777 "$SCRIPT_DIR/marzban/caddy-config" 2>/dev/null || true
 fi
 
-# 使用更简单的Caddy配置
+# 使用更简单的Caddy配置，自动申请Let's Encrypt证书
 cat > "$SCRIPT_DIR/marzban/Caddyfile" << EOF
 {
     # 全局设置
     admin off
-    persist_config off
-    auto_https disable_redirects  # 禁止自动重定向以确保可靠工作
-    email admin@vpn.mytelcc.xyz
+    email admin@${BASE_DOMAIN}
     log {
         level INFO
     }
+    # Let's Encrypt将自动申请证书
 }
 
 # 主域名配置
 $BASE_DOMAIN {
-    # 启用TLS
-    tls internal  # 使用自签名证书，快速启动
+    # 自动申请SSL证书 (默认行为)
+    # tls 将自动使用Let's Encrypt申请
     
     # Marzban面板
-    handle /panel* {
+    handle /panel/* {
         reverse_proxy marzban:8000
     }
     
     # Grafana监控面板
-    handle /monitor* {
+    handle /monitor/* {
         reverse_proxy grafana:3000
     }
     
     # Netmaker控制台
-    handle /netmaker* {
+    handle /netmaker/* {
         reverse_proxy http://localhost:8095
     }
     
