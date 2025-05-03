@@ -220,6 +220,25 @@ $BASE_DOMAIN {
 EOF
 echo -e "${GREEN}Caddy配置文件更新成功${NC}"
 
+# 4.2 修夌Marzban环境配置
+echo -e "${YELLOW}创建Marzban环境配置文件...${NC}"
+
+# 创建Marzban环境配置文件
+cat > "$SCRIPT_DIR/marzban/env" << EOF
+SUDO_USERNAME=admin
+SUDO_PASSWORD=admin
+XRAY_JSON=/var/lib/marzban/xray_config.json
+SQLALCHEMY_DATABASE_URL=mysql+pymysql://root:${MYSQL_PASSWORD:-marzban}@mariadb:3306/marzban
+EOF
+
+# 创建MariaDB环境配置文件
+cat > "$SCRIPT_DIR/marzban/env-db" << EOF
+MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD:-marzban}
+MYSQL_DATABASE=marzban
+EOF
+
+echo -e "${GREEN}Marzban环境配置文件创建成功${NC}"
+
 # 4.5 修夌Docker Compose配置
 echo -e "${YELLOW}修夌Docker Compose配置文件...${NC}"
 
