@@ -289,7 +289,7 @@ else
 version: '3'
 services:
   marzban:
-    image: gozargah/marzban:latest
+    image: gozargah/marzban:v0.5.2
     restart: always
     env_file:
       - ./env
