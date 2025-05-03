@@ -374,6 +374,62 @@ echo -e "${YELLOW}启动Docker容器...${NC}"
 cd "$SCRIPT_DIR/marzban"
 docker-compose up -d
 
+# 创建前端JS修复脚本
+cat > "$SCRIPT_DIR/marzban/fix_js.sh" << 'EOF'
+#!/bin/bash
+
+echo "===== 开始修复 Marzban前端JavaScript错误 ====="
+
+# 获取Marzban容器名称
+MARZBAN_CONTAINER=$(docker-compose ps -q marzban)
+if [ -z "$MARZBAN_CONTAINER" ]; then
+  echo "错误: 找不到Marzban容器"
+  exit 1
+fi
+
+# 创建临时目录
+mkdir -p /tmp/js_fix
+
+# 从容器中复制静态文件
+echo "从容器中提取前端文件..."
+docker cp $MARZBAN_CONTAINER:/code/app/static /tmp/js_fix/
+
+# 查找可能包含错误的JS文件
+echo "查找包含错误正则表达式的文件..."
+FILES_TO_CHECK=$(find /tmp/js_fix -name "*.js" -type f)
+
+echo "修复可能的Unicode编码问题..."
+for file in $FILES_TO_CHECK; do
+  # 替换可能的错误字符
+  echo "处理文件: $file"
+  # 替换包含特殊字符的正则表达式，首先处理您报告的错误
+  sed -i 's/\/\[\'\xe2\x80\x9c\]\//\/\[\'"\]\//g' "$file" 2>/dev/null || true
+  sed -i 's/\/\[\'\xe2\x80\x9d\]\//\/\[\'"\]\//g' "$file" 2>/dev/null || true
+  # 处理其他可能的特殊字符
+  sed -i 's/\xe2\x80\x9c/"/g' "$file" 2>/dev/null || true
+  sed -i 's/\xe2\x80\x9d/"/g' "$file" 2>/dev/null || true
+  sed -i 's/\xe2\x80\x98/\\\'\'/g' "$file" 2>/dev/null || true
+  sed -i 's/\xe2\x80\x99/\\\'\'/g' "$file" 2>/dev/null || true
+done
+
+# 将修复后的文件复制回容器
+echo "将修复后的文件复制回容器..."
+docker cp /tmp/js_fix/static $MARZBAN_CONTAINER:/code/app/
+
+# 重启Marzban容器
+echo "重启 Marzban 容器..."
+docker-compose restart marzban
+
+# 清理临时文件
+echo "清理临时文件..."
+rm -rf /tmp/js_fix
+
+echo "===== JavaScript文件修复完成 ====="
+echo "请尝试访问 https://您的域名/panel 并清除浏览器缓存"
+EOF
+
+chmod +x "$SCRIPT_DIR/marzban/fix_js.sh"
+
 # 创建诊断脚本
 cat > "$SCRIPT_DIR/marzban/diagnose.sh" << 'EOF'
 #!/bin/bash
