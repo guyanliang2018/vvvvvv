@@ -141,22 +141,50 @@ EOF
   echo -e "${GREEN}Alertmanager配置文件创建成功${NC}"
 fi
 
-# 3. 设置目录权限
+# 3. 强化目录权限修复
 echo -e "${YELLOW}设置正确的目录权限...${NC}"
+
+# 先停止所有容器
+cd "$SCRIPT_DIR/marzban"
+docker-compose down 2>/dev/null || true
+
+# 设置目录权限 - 使用root权限确保成功
 if command -v sudo &> /dev/null; then
   # 如果有sudo权限
-  sudo chown -R 1000:1000 "$SCRIPT_DIR/marzban/grafana" || true
-  sudo chown -R 1000:1000 "$SCRIPT_DIR/marzban/prometheus" || true
-  sudo chown -R 1000:1000 "$SCRIPT_DIR/marzban/prometheus-data" || true
-  sudo chown -R 1000:1000 "$SCRIPT_DIR/marzban/alertmanager" || true
-  sudo chmod -R 755 "$SCRIPT_DIR/marzban/grafana" "$SCRIPT_DIR/marzban/prometheus" "$SCRIPT_DIR/marzban/prometheus-data" "$SCRIPT_DIR/marzban/alertmanager" || true
+  sudo mkdir -p "$SCRIPT_DIR/marzban/grafana"
+  sudo mkdir -p "$SCRIPT_DIR/marzban/prometheus" "$SCRIPT_DIR/marzban/prometheus-data"
+  sudo mkdir -p "$SCRIPT_DIR/marzban/alertmanager"
+  
+  # 强化权限设置
+  sudo chown -R 472:472 "$SCRIPT_DIR/marzban/grafana" || true # Grafana需要472用户
+  sudo chown -R 65534:65534 "$SCRIPT_DIR/marzban/prometheus" || true # Prometheus需要nobody用户
+  sudo chown -R 65534:65534 "$SCRIPT_DIR/marzban/prometheus-data" || true
+  sudo chown -R 65534:65534 "$SCRIPT_DIR/marzban/alertmanager" || true
+  
+  # 提供足够的权限
+  sudo chmod -R 777 "$SCRIPT_DIR/marzban/grafana"
+  sudo chmod -R 777 "$SCRIPT_DIR/marzban/prometheus"
+  sudo chmod -R 777 "$SCRIPT_DIR/marzban/prometheus-data"
+  sudo chmod -R 777 "$SCRIPT_DIR/marzban/alertmanager"
+  
+  echo -e "${GREEN}目录权限设置成功${NC}"
 else
   # 如果没有sudo，尝试直接设置
-  chown -R 1000:1000 "$SCRIPT_DIR/marzban/grafana" 2>/dev/null || echo -e "${YELLOW}注意: 无法设置 grafana 目录权限${NC}"
-  chown -R 1000:1000 "$SCRIPT_DIR/marzban/prometheus" 2>/dev/null || echo -e "${YELLOW}注意: 无法设置 prometheus 目录权限${NC}"
-  chown -R 1000:1000 "$SCRIPT_DIR/marzban/prometheus-data" 2>/dev/null || echo -e "${YELLOW}注意: 无法设置 prometheus-data 目录权限${NC}"
-  chown -R 1000:1000 "$SCRIPT_DIR/marzban/alertmanager" 2>/dev/null || echo -e "${YELLOW}注意: 无法设置 alertmanager 目录权限${NC}"
-  chmod -R 755 "$SCRIPT_DIR/marzban/grafana" "$SCRIPT_DIR/marzban/prometheus" "$SCRIPT_DIR/marzban/prometheus-data" "$SCRIPT_DIR/marzban/alertmanager" 2>/dev/null || true
+  mkdir -p "$SCRIPT_DIR/marzban/grafana"
+  mkdir -p "$SCRIPT_DIR/marzban/prometheus" "$SCRIPT_DIR/marzban/prometheus-data"
+  mkdir -p "$SCRIPT_DIR/marzban/alertmanager"
+  
+  # 尝试设置权限
+  chown -R 472:472 "$SCRIPT_DIR/marzban/grafana" 2>/dev/null || echo -e "${YELLOW}注意: 无法设置 grafana 目录权限${NC}"
+  chown -R 65534:65534 "$SCRIPT_DIR/marzban/prometheus" 2>/dev/null || echo -e "${YELLOW}注意: 无法设置 prometheus 目录权限${NC}"
+  chown -R 65534:65534 "$SCRIPT_DIR/marzban/prometheus-data" 2>/dev/null || echo -e "${YELLOW}注意: 无法设置 prometheus-data 目录权限${NC}"
+  chown -R 65534:65534 "$SCRIPT_DIR/marzban/alertmanager" 2>/dev/null || echo -e "${YELLOW}注意: 无法设置 alertmanager 目录权限${NC}"
+  
+  # 提供最大权限
+  chmod -R 777 "$SCRIPT_DIR/marzban/grafana" 2>/dev/null || true
+  chmod -R 777 "$SCRIPT_DIR/marzban/prometheus" 2>/dev/null || true
+  chmod -R 777 "$SCRIPT_DIR/marzban/prometheus-data" 2>/dev/null || true
+  chmod -R 777 "$SCRIPT_DIR/marzban/alertmanager" 2>/dev/null || true
 fi
 
 # 4. 创建Caddy配置
@@ -185,6 +213,108 @@ $BASE_DOMAIN {
 }
 EOF
   echo -e "${GREEN}Caddy配置文件创建成功${NC}"
+fi
+
+# 4.5 修夌Docker Compose配置
+echo -e "${YELLOW}修夌Docker Compose配置文件...${NC}"
+
+# 只有当可以访问docker-compose.yml时才修改
+if [ -f "$SCRIPT_DIR/marzban/docker-compose.yml" ]; then
+  # 备份原始文件
+  cp "$SCRIPT_DIR/marzban/docker-compose.yml" "$SCRIPT_DIR/marzban/docker-compose.yml.bak"
+  
+  # 使用sed修改用户ID的配置
+  # 1. 删除grafana的user定义，让它使用默认用户
+  sed -i 's/user: "1000"/user: "472"/g' "$SCRIPT_DIR/marzban/docker-compose.yml" || true
+  
+  # 2. 确保每个服务都使用正确的映射
+  grep -q "/prometheus" "$SCRIPT_DIR/marzban/docker-compose.yml" || \
+    sed -i 's|volumes:\n      - ./prometheus:/etc/prometheus|volumes:\n      - ./prometheus:/etc/prometheus\n      - ./prometheus-data:/prometheus|g' "$SCRIPT_DIR/marzban/docker-compose.yml" || true
+  
+  echo -e "${GREEN}Docker Compose文件修复完成${NC}"
+else
+  echo -e "${YELLOW}警告: 无法找到docker-compose.yml文件${NC}"
+  
+  # 创建或覆盖docker-compose.yml文件
+  echo -e "${YELLOW}创建新的Docker Compose配置文件...${NC}"
+  
+  cat > "$SCRIPT_DIR/marzban/docker-compose.yml" << 'EOF'
+version: '3'
+services:
+  marzban:
+    image: gozargah/marzban:latest
+    restart: always
+    env_file:
+      - ./env
+    volumes:
+      - ./data:/var/lib/marzban
+      - ./certs:/var/lib/marzban/certs
+    depends_on:
+      - mariadb
+    networks:
+      - marzban-network
+
+  mariadb:
+    image: mariadb:10.6
+    restart: always
+    env_file:
+      - ./env-db
+    volumes:
+      - ./mysql:/var/lib/mysql
+    networks:
+      - marzban-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: always
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - ./prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - marzban-network
+  
+  grafana:
+    image: grafana/grafana:latest
+    restart: always
+    volumes:
+      - ./grafana:/var/lib/grafana
+    networks:
+      - marzban-network
+    user: "472"
+  
+  alertmanager:
+    image: prom/alertmanager:latest
+    restart: always
+    volumes:
+      - ./alertmanager:/etc/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+    networks:
+      - marzban-network
+
+  caddy:
+    image: caddy:2
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy-data:/data
+      - ./caddy-config:/config
+    networks:
+      - marzban-network
+      - default
+
+networks:
+  marzban-network:
+  default:
+    external: false
+EOF
+  echo -e "${GREEN}Docker Compose文件创建成功${NC}"
 fi
 
 # 5. 启动容器
