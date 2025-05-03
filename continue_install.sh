@@ -369,19 +369,66 @@ fi
 # 5. 启动容器
 echo -e "${BLUE}启动Marzban面板...${NC}"
 
-# 清理旧容器
-echo -e "${YELLOW}清理可能的残留容器...${NC}"
+# 启动所有容器
+echo -e "${YELLOW}启动Docker容器...${NC}"
 cd "$SCRIPT_DIR/marzban"
-docker-compose down 2>/dev/null || true
-
-# 启动容器
-echo -e "${GREEN}启动所有服务...${NC}"
 docker-compose up -d
+
+# 创建诊断脚本
+cat > "$SCRIPT_DIR/marzban/diagnose.sh" << 'EOF'
+#!/bin/bash
+
+echo "===== Marzban 诊断工具 ====="
+echo "检查容器状态..."
+docker-compose ps
+
+echo "\n===== 检查网络配置 ====="
+echo "Docker网络:"
+docker network ls
+
+echo "\n===== 检查端口监听 ====="
+netstat -tulpn | grep -E ':(80|443|8000)'
+
+echo "\n===== 检查防火墙状态 ====="
+if command -v ufw &> /dev/null; then
+    ufw status
+else
+    echo "未安装ufw防火墙"
+fi
+
+if command -v firewalld &> /dev/null; then
+    firewall-cmd --list-all
+else
+    echo "未安装firewalld防火墙"
+fi
+
+echo "\n===== Marzban容器日志(最后20行) ====="
+docker-compose logs --tail=20 marzban
+
+echo "\n===== Caddy容器日志(最后20行) ====="
+docker-compose logs --tail=20 caddy
+
+echo "\n===== 提示 ====="
+echo "1. 如果上述输出显示防火墙阻止了端口8000，请运行:"
+echo "   sudo ufw allow 8000/tcp"
+echo "   或"
+echo "   sudo firewall-cmd --permanent --add-port=8000/tcp && sudo firewall-cmd --reload"
+
+echo "2. 确保服务器提供商没有额外的防火墙规则阻止端口8000"
+
+echo "3. 请检查容器状态，确保所有容器都在运行"
+EOF
+
+chmod +x "$SCRIPT_DIR/marzban/diagnose.sh"
 
 # 6. 验证服务
 echo -e "${BLUE}验证服务状态...${NC}"
 sleep 5
 docker-compose ps
+
+echo -e "${GREEN}安装完成!${NC}"
+echo -e "${YELLOW}如需诊断问题，请运行: ${NC}"
+echo -e "cd ~/vvvvvv/marzban && ./diagnose.sh"
 
 echo -e "${GREEN}安装完成！${NC}"
 echo -e "您可以通过以下地址访问："
