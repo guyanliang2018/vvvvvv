@@ -188,32 +188,37 @@ else
 fi
 
 # 4. 创建Caddy配置
-if [ ! -f "$SCRIPT_DIR/marzban/Caddyfile" ]; then
-  echo -e "${YELLOW}创建 Caddy 配置文件...${NC}"
-  cat > "$SCRIPT_DIR/marzban/Caddyfile" << EOF
+echo -e "${YELLOW}创建或更新 Caddy 配置文件...${NC}"
+cat > "$SCRIPT_DIR/marzban/Caddyfile" << EOF
 $BASE_DOMAIN {
-    reverse_proxy /panel/* marzban:8000 {
-        header_up Host {upstream_hostport}
-        header_up X-Real-IP {remote_host}
+    # Marzban面板 - 使用更简单的配置
+    handle_path /panel/* {
+        reverse_proxy marzban:8000
     }
     
-    reverse_proxy /monitor/* grafana:3000 {
-        header_up Host {upstream_hostport}
-        header_up X-Real-IP {remote_host}
+    # 另一种方式，如果上面的不起作用
+    # reverse_proxy /panel/* marzban:8000
+    
+    # Grafana监控面板
+    handle_path /monitor/* {
+        reverse_proxy grafana:3000
     }
     
-    reverse_proxy /netmaker/* netmaker:8080 {
-        header_up Host {upstream_hostport}
-        header_up X-Real-IP {remote_host}
+    # Netmaker控制台
+    handle_path /netmaker/* {
+        reverse_proxy netmaker:8080
     }
     
+    # 设置默认跳转到面板
+    redir / /panel
+    
+    # 启用日志
     log {
         output file /var/log/caddy/access.log
     }
 }
 EOF
-  echo -e "${GREEN}Caddy配置文件创建成功${NC}"
-fi
+echo -e "${GREEN}Caddy配置文件更新成功${NC}"
 
 # 4.5 修夌Docker Compose配置
 echo -e "${YELLOW}修夌Docker Compose配置文件...${NC}"
