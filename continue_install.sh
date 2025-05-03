@@ -188,29 +188,53 @@ else
 fi
 
 # 4. 创建Caddy配置
-echo -e "${YELLOW}创建或更新 Caddy 配置文件...${NC}"
+echo -e "${YELLOW}# 4. 创建或更新 Caddy 配置文件...${NC}"
+
+# 重命名授权目录确保可写
+if [ -d "$SCRIPT_DIR/marzban/caddy-data" ]; then
+  chmod -R 777 "$SCRIPT_DIR/marzban/caddy-data" 2>/dev/null || true
+fi
+if [ -d "$SCRIPT_DIR/marzban/caddy-config" ]; then
+  chmod -R 777 "$SCRIPT_DIR/marzban/caddy-config" 2>/dev/null || true
+fi
+
+# 使用更简单的Caddy配置
 cat > "$SCRIPT_DIR/marzban/Caddyfile" << EOF
+{
+    # 全局设置
+    admin off
+    persist_config off
+    auto_https disable_redirects  # 禁止自动重定向以确保可靠工作
+    email admin@vpn.mytelcc.xyz
+    log {
+        level INFO
+    }
+}
+
+# 主域名配置
 $BASE_DOMAIN {
-    # Marzban面板 - 使用更简单的配置
-    handle_path /panel/* {
+    # 启用TLS
+    tls internal  # 使用自签名证书，快速启动
+    
+    # Marzban面板
+    handle /panel* {
         reverse_proxy marzban:8000
     }
     
-    # 另一种方式，如果上面的不起作用
-    # reverse_proxy /panel/* marzban:8000
-    
     # Grafana监控面板
-    handle_path /monitor/* {
+    handle /monitor* {
         reverse_proxy grafana:3000
     }
     
     # Netmaker控制台
-    handle_path /netmaker/* {
-        reverse_proxy netmaker:8080
+    handle /netmaker* {
+        reverse_proxy http://localhost:8095
     }
     
-    # 设置默认跳转到面板
-    redir / /panel
+    # 根路径跳转到面板
+    handle / {
+        redir /panel 302
+    }
     
     # 启用日志
     log {
