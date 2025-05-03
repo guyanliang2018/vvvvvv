@@ -291,6 +291,8 @@ services:
   marzban:
     image: gozargah/marzban:latest
     restart: always
+    ports:
+      - "8000:8000"  # 直接暴露Marzban端口
     env_file:
       - ./env
     volumes:
